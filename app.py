@@ -2,11 +2,22 @@ from flask import Flask, render_template, jsonify, request
 import pandas as pd
 import json
 
+import os
+import pandas as pd
+import kagglehub
+
+path = kagglehub.dataset_download("guilherme2008/acidentes-em-rodovias-federais")
+
+csv_file = os.path.join(path, "datatran2017-2024.csv")
+
+
+
+
 app = Flask(__name__)
 
 # Carrega os dados na inicialização
 print("Carregando base de dados...")
-csv_path = 'datatran2017-2024.csv'
+csv_path = csv_file
 
 # Lendo apenas as colunas necessárias para o dashboard para poupar memória e tempo
 cols_to_use = [
