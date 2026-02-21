@@ -301,12 +301,21 @@ body {
     min-height: 380px;
     padding: 50px 40px;
     justify-content: center;
-    background: linear-gradient(135deg, rgba(0, 210, 255, 0.2), rgba(58, 123, 213, 0.12));
-    border: 2px solid rgba(0, 210, 255, 0.4);
-    box-shadow: 0 0 40px rgba(0, 210, 255, 0.15);
-    border-radius: 20px;
     display: flex;
     flex-direction: column;
+    border-radius: 20px;
+    
+    /* Gradiente em tons de vermelho/escuro */
+    background: linear-gradient(135deg, rgba(255, 65, 54, 0.2), rgba(139, 0, 0, 0.12));
+    
+    /* Borda sólida em vermelho vibrante */
+    border: 2px solid rgba(255, 65, 54, 0.5);
+    
+    /* Efeito Glow (Brilho) em vermelho */
+    box-shadow: 0 0 40px rgba(255, 65, 54, 0.2);
+    
+    /* Transição suave caso queira adicionar hover depois */
+    transition: all 0.3s ease;
 }
 
 .kpi-title {
@@ -330,7 +339,7 @@ body {
 .kpi-value {
     font-size: 72px;
     font-weight: 900;
-    color: var(--accent);
+    color: var(--hazard); /* vermelho */
     letter-spacing: -3px;
     line-height: 1;
 }

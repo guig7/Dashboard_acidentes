@@ -260,13 +260,10 @@ def mapa_acidentes():
     df_filtered = get_filtered_df()
     if df_filtered.empty or 'latitude' not in df_filtered.columns:
         return jsonify([])
-    
     df_map = df_filtered.dropna(subset=['latitude', 'longitude'])
-    
-    # Retorna uma amostra de no máximo 3000 pontos para não travar o frontend Leaflet
-    if len(df_map) > 3000:
-        df_map = df_map.sample(3000)
-        
+    # Retorna uma amostra de no máximo 100000 pontos para não travar o frontend Leaflet
+    if len(df_map) > 100000:
+        df_map = df_map.sample(100000)
     coords = df_map[['latitude', 'longitude']].values.tolist()
     return jsonify(coords)
 
