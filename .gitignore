@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pyc
+*.pdb
+
+# Virtualenv
+venv/
+.env/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# VSCode
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# CSV e dados grandes
+*.csv
+*.xlsx
+*.xls
+*.parquet
+*.feather
+
+# Logs
+*.log
+
+# Flask
+instance/
+*.db
+
+# Outros
+*.bak
+*.swp

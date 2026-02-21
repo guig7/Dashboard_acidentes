@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Painel de Acidentes - Detran Brasil</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+
+<body>
+    <div class="dashboard-container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="logo-area">
+                <h1>Painel Detran</h1>
+                <p>Acidentes 2017 - 2024</p>
+            </div>
+
+            <div class="stats-area">
+                <div class="stat-card">
+                    <p class="stat-label">Total Acidentes</p>
+                    <h2 class="stat-value highlight" id="total_acidentes">Carregando...</h2>
+                </div>
+                <div class="stat-card">
+                    <p class="stat-label">Total Mortos</p>
+                    <h2 class="stat-value hazard" id="total_mortos">-</h2>
+                </div>
+                <div class="stat-card">
+                    <p class="stat-label">Total Feridos</p>
+                    <h2 class="stat-value warning" id="total_feridos">-</h2>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <header class="top-nav">
+                <h2>Visão Geral de Seguridade Viária Brasil</h2>
+                <div class="filters">
+                    <select id="filter-ano" class="custom-select">
+                        <option value="">Todos os Anos</option>
+                        <option value="2024">2024</option>
+                        <option value="2023">2023</option>
+                        <option value="2022">2022</option>
+                        <option value="2021">2021</option>
+                        <option value="2020">2020</option>
+                        <option value="2019">2019</option>
+                        <option value="2018">2018</option>
+                        <option value="2017">2017</option>
+                    </select>
+
+                    <select id="filter-uf" class="custom-select">
+                        <option value="">Todos os Estados</option>
+                        <option value="AC">AC</option>
+                        <option value="AL">AL</option>
+                        <option value="AP">AP</option>
+                        <option value="AM">AM</option>
+                        <option value="BA">BA</option>
+                        <option value="CE">CE</option>
+                        <option value="DF">DF</option>
+                        <option value="ES">ES</option>
+                        <option value="GO">GO</option>
+                        <option value="MA">MA</option>
+                        <option value="MT">MT</option>
+                        <option value="MS">MS</option>
+                        <option value="MG">MG</option>
+                        <option value="PA">PA</option>
+                        <option value="PB">PB</option>
+                        <option value="PR">PR</option>
+                        <option value="PE">PE</option>
+                        <option value="PI">PI</option>
+                        <option value="RJ">RJ</option>
+                        <option value="RN">RN</option>
+                        <option value="RS">RS</option>
+                        <option value="RO">RO</option>
+                        <option value="RR">RR</option>
+                        <option value="SC">SC</option>
+                        <option value="SP">SP</option>
+                        <option value="SE">SE</option>
+                        <option value="TO">TO</option>
+                    </select>
+                </div>
+            </header>
+
+            <!-- Charts Grid -->
+            <div class="charts-grid">
+
+                <!-- ROW 1: GRID 2x2 - Taxa Severidade + Evolução Acidentes + Heatmap + Mortos -->
+                
+                <!-- TOP LEFT: Evolução Anual de Acidentes -->
+                <div class="chart-container large">
+                    <h3 class="chart-title">Evolução Anual de Acidentes</h3>
+                    <div class="chart-wrapper">
+                        <canvas id="evolucaoAcidentes"></canvas>
+                    </div>
+                </div>
+
+                <!-- TOP RIGHT: KPI PRINCIPAL - Taxa de Severidade -->
+                <div class="kpi-card kpi-main">
+                    <h3 class="kpi-title">Taxa de Severidade</h3>
+                    <div class="kpi-content">
+                        <div class="kpi-value" id="kpi_severidade">-</div>
+                        <div class="kpi-label">MORTOS POR ACIDENTE (%)</div>
+                    </div>
+                </div>
+
+                <!-- MIDDLE LEFT: Acidentes por Hora do Dia -->
+                <div class="chart-container medium">
+                    <h3 class="chart-title">Acidentes por Hora do Dia</h3>
+                    <div class="chart-wrapper">
+                        <canvas id="heatmapHorarios"></canvas>
+                    </div>
+                </div>
+
+                <!-- MIDDLE RIGHT: Evolução Anual de Vítimas Fatais -->
+                <div class="chart-container large">
+                    <h3 class="chart-title">Evolução Anual de Vítimas Fatais</h3>
+                    <div class="chart-wrapper">
+                        <canvas id="evolucaoMortos"></canvas>
+                    </div>
+                </div>
+
+                <!-- ROW 2: RANKING CRÍTICO (Full Width) -->
+                <div class="chart-container full-width">
+                    <h3 class="chart-title">🔴 Ranking de Estados - Taxa de Severidade (CRÍTICO)</h3>
+                    <div class="chart-wrapper" style="height: 450px;">
+                        <canvas id="rankingEstados"></canvas>
+                    </div>
+                </div>
+
+                <!-- ROW 3: MAPA GEOGRÁFICO (Full Width) -->
+                <div class="chart-container full-width">
+                    <h3 class="chart-title">🗺️ Mapa Geográfico de Acidentes</h3>
+                    <div id="mapContainer"></div>
+                </div>
+
+            </div>
+        </main>
+    </div>
+
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Leaflet JS -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+    <!-- MarkerCluster JS -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.1/leaflet.markercluster.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.1/MarkerCluster.min.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.1/MarkerCluster.Default.min.css" />
+    <!-- App Script -->
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+
+</html>
