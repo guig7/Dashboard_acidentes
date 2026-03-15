@@ -4,43 +4,68 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Painel de Acidentes - Detran Brasil</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <title>Painel de Acidentes — Detran Brasil</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Space+Mono:wght@400;700&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,300&display=swap" rel="stylesheet">
     <!-- Leaflet CSS -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+    <!-- MarkerCluster CSS -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.1/MarkerCluster.min.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.1/MarkerCluster.Default.min.css" />
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 
 <body>
     <div class="dashboard-container">
-        <!-- Sidebar -->
+
+        <!-- ── SIDEBAR ── -->
         <aside class="sidebar">
             <div class="logo-area">
-                <h1>Painel Detran</h1>
-                <p>Acidentes 2017 - 2024</p>
+                <h1>Painel<span> Detran</span></h1>
+                <p>Rodovias Federais</p>
+                <div class="live-badge">
+                    <span class="live-dot"></span>
+                    Sistema Ativo
+                </div>
             </div>
 
-            <div class="stats-area">
-                <div class="stat-card">
-                    <p class="stat-label">Total Acidentes</p>
-                    <h2 class="stat-value highlight" id="total_acidentes">Carregando...</h2>
+            <div>
+                <p class="sidebar-section-label">Métricas Gerais</p>
+                <div class="stats-area" style="margin-top: 12px;">
+                    <div class="stat-card accent-card">
+                        <p class="stat-label">Total Acidentes</p>
+                        <h2 class="stat-value highlight" id="total_acidentes">—</h2>
+                    </div>
+                    <div class="stat-card hazard-card">
+                        <p class="stat-label">Total Mortos</p>
+                        <h2 class="stat-value hazard" id="total_mortos">—</h2>
+                    </div>
+                    <div class="stat-card warning-card">
+                        <p class="stat-label">Total Feridos</p>
+                        <h2 class="stat-value warning" id="total_feridos">—</h2>
+                    </div>
                 </div>
-                <div class="stat-card">
-                    <p class="stat-label">Total Mortos</p>
-                    <h2 class="stat-value hazard" id="total_mortos">-</h2>
-                </div>
-                <div class="stat-card">
-                    <p class="stat-label">Total Feridos</p>
-                    <h2 class="stat-value warning" id="total_feridos">-</h2>
-                </div>
+            </div>
+
+            <div style="margin-top: auto;">
+                <p class="sidebar-section-label">Período</p>
+                <p style="font-family: var(--font-mono); font-size: 0.65rem; color: var(--text-muted); margin-top: 10px; line-height: 1.8;">
+                    2017 — 2024<br>
+                    Fonte: PRF / Kaggle
+                </p>
             </div>
         </aside>
 
-        <!-- Main Content -->
+        <!-- ── MAIN ── -->
         <main class="main-content">
+
+            <!-- Top Nav -->
             <header class="top-nav">
-                <h2>Visão Geral de Seguridade Viária Brasil</h2>
+                <h2>Seguridade Viária <span>/ Brasil</span></h2>
                 <div class="filters">
+                    <span id="timestamp"></span>
+
                     <select id="filter-ano" class="custom-select">
                         <option value="">Todos os Anos</option>
                         <option value="2024">2024</option>
@@ -89,9 +114,7 @@
             <!-- Charts Grid -->
             <div class="charts-grid">
 
-                <!-- ROW 1: GRID 2x2 - Taxa Severidade + Evolução Acidentes + Heatmap + Mortos -->
-                
-                <!-- TOP LEFT: Evolução Anual de Acidentes -->
+                <!-- Evolução Anual de Acidentes -->
                 <div class="chart-container large">
                     <h3 class="chart-title">Evolução Anual de Acidentes</h3>
                     <div class="chart-wrapper">
@@ -99,16 +122,18 @@
                     </div>
                 </div>
 
-                <!-- TOP RIGHT: KPI PRINCIPAL - Taxa de Severidade -->
+                <!-- KPI Taxa de Severidade -->
                 <div class="kpi-card kpi-main">
+                    <div class="kpi-ring"></div>
                     <h3 class="kpi-title">Taxa de Severidade</h3>
                     <div class="kpi-content">
-                        <div class="kpi-value" id="kpi_severidade">-</div>
-                        <div class="kpi-label">MORTOS POR ACIDENTE (%)</div>
+                        <div class="kpi-value" id="kpi_severidade">—</div>
+                        <div class="kpi-label">Mortos por Acidente (%)</div>
+                        <div class="kpi-comparison-box" id="kpi_comparativo">—</div>
                     </div>
                 </div>
 
-                <!-- MIDDLE LEFT: Acidentes por Hora do Dia -->
+                <!-- Acidentes por Hora -->
                 <div class="chart-container medium">
                     <h3 class="chart-title">Acidentes por Hora do Dia</h3>
                     <div class="chart-wrapper">
@@ -116,25 +141,25 @@
                     </div>
                 </div>
 
-                <!-- MIDDLE RIGHT: Evolução Anual de Vítimas Fatais -->
+                <!-- Vítimas Fatais por Ano -->
                 <div class="chart-container large">
-                    <h3 class="chart-title">Evolução Anual de Vítimas Fatais</h3>
+                    <h3 class="chart-title">Vítimas Fatais por Ano</h3>
                     <div class="chart-wrapper">
                         <canvas id="evolucaoMortos"></canvas>
                     </div>
                 </div>
 
-                <!-- ROW 2: RANKING CRÍTICO (Full Width) -->
+                <!-- Ranking de Estados (Full Width) -->
                 <div class="chart-container full-width">
-                    <h3 class="chart-title">🔴 Ranking de Estados - Taxa de Severidade (CRÍTICO)</h3>
-                    <div class="chart-wrapper" style="height: 450px;">
+                    <h3 class="chart-title">Ranking — Taxa de Severidade por Estado</h3>
+                    <div class="chart-wrapper" style="height: 420px;">
                         <canvas id="rankingEstados"></canvas>
                     </div>
                 </div>
 
-                <!-- ROW 3: MAPA GEOGRÁFICO (Full Width) -->
+                <!-- Mapa (Full Width) -->
                 <div class="chart-container full-width">
-                    <h3 class="chart-title">🗺️ Mapa Geográfico de Acidentes</h3>
+                    <h3 class="chart-title">Mapa Geográfico de Acidentes</h3>
                     <div id="mapContainer"></div>
                 </div>
 
@@ -148,8 +173,17 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
     <!-- MarkerCluster JS -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.1/leaflet.markercluster.min.js"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.1/MarkerCluster.min.css" />
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.1/MarkerCluster.Default.min.css" />
+    <!-- Timestamp -->
+    <script>
+        function updateTimestamp() {
+            const el = document.getElementById('timestamp');
+            if (!el) return;
+            const now = new Date();
+            el.textContent = now.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'medium' });
+        }
+        updateTimestamp();
+        setInterval(updateTimestamp, 1000);
+    </script>
     <!-- App Script -->
     <script src="{{ url_for('static', filename='script.js') }}"></script>
 </body>
