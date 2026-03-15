@@ -148,7 +148,7 @@ Pull requests são bem-vindos! Para sugestões ou melhorias:
 
 ## 📄 Licença
 
-Este projeto está sob a licença MIT. Veja o arquivo [LICENSE](LICENSE) para mais detalhes.
+Este projeto está sob a licença MIT. Veja o arquivo [LICENSE](License) para mais detalhes.
 
 ---
 
