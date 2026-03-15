@@ -8,9 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Space+Mono:wght@400;700&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,300&display=swap" rel="stylesheet">
-    <!-- Leaflet CSS -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
-    <!-- MarkerCluster CSS -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.1/MarkerCluster.min.css" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.1/MarkerCluster.Default.min.css" />
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
@@ -60,12 +58,10 @@
         <!-- ── MAIN ── -->
         <main class="main-content">
 
-            <!-- Top Nav -->
             <header class="top-nav">
                 <h2>Seguridade Viária <span>/ Brasil</span></h2>
                 <div class="filters">
                     <span id="timestamp"></span>
-
                     <select id="filter-ano" class="custom-select">
                         <option value="">Todos os Anos</option>
                         <option value="2024">2024</option>
@@ -77,7 +73,6 @@
                         <option value="2018">2018</option>
                         <option value="2017">2017</option>
                     </select>
-
                     <select id="filter-uf" class="custom-select">
                         <option value="">Todos os Estados</option>
                         <option value="AC">AC</option>
@@ -111,7 +106,6 @@
                 </div>
             </header>
 
-            <!-- Charts Grid -->
             <div class="charts-grid">
 
                 <!-- Evolução Anual de Acidentes -->
@@ -149,7 +143,7 @@
                     </div>
                 </div>
 
-                <!-- Ranking de Estados (Full Width) -->
+                <!-- Ranking de Estados -->
                 <div class="chart-container full-width">
                     <h3 class="chart-title">Ranking — Taxa de Severidade por Estado</h3>
                     <div class="chart-wrapper" style="height: 420px;">
@@ -157,7 +151,26 @@
                     </div>
                 </div>
 
-                <!-- Mapa (Full Width) -->
+                <!-- ── NOVO: Top Causas ── -->
+                <div class="chart-container full-width">
+                    <h3 class="chart-title">Principais Causas de Acidentes</h3>
+                    <div class="causas-grid">
+                        <div class="chart-wrapper" style="height: 380px;">
+                            <canvas id="topCausas"></canvas>
+                        </div>
+                        <div class="causas-tabela">
+                            <div class="causas-tabela-header">
+                                <span>Causa</span>
+                                <span>Acidentes</span>
+                                <span>Mortos</span>
+                                <span>Severidade</span>
+                            </div>
+                            <div id="causasTabelaBody"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Mapa -->
                 <div class="chart-container full-width">
                     <h3 class="chart-title">Mapa Geográfico de Acidentes</h3>
                     <div id="mapContainer"></div>
@@ -167,13 +180,9 @@
         </main>
     </div>
 
-    <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <!-- Leaflet JS -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-    <!-- MarkerCluster JS -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.1/leaflet.markercluster.min.js"></script>
-    <!-- Timestamp -->
     <script>
         function updateTimestamp() {
             const el = document.getElementById('timestamp');
@@ -184,8 +193,6 @@
         updateTimestamp();
         setInterval(updateTimestamp, 1000);
     </script>
-    <!-- App Script -->
     <script src="{{ url_for('static', filename='script.js') }}"></script>
 </body>
-
 </html>
