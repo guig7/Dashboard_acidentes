@@ -185,6 +185,7 @@ async function carregarMortosAno() {
                     backgroundColor: grad,
                     borderRadius: 5,
                     barPercentage: 0.55
+                    
                 }]
             },
             options: chartOptions()
@@ -279,10 +280,26 @@ async function carregarRankingEstados() {
             type: 'bar',
             data: {
                 labels: data.labels,
-                datasets: [{ label: 'Taxa Severidade (%)', data: data.taxa_severidade, backgroundColor: bgColors, borderColor: borderColors, borderWidth: 1, borderRadius: 5 }]
+                datasets: [{ 
+                    label: 'Taxa Severidade (%)',
+                    data: data.taxa_severidade,
+                    backgroundColor: bgColors,
+                    borderColor: borderColors,
+                    borderWidth: 1,
+                    borderRadius: 5
+                    }]
             },
             options: {
-                ...chartOptions({ indexAxis: 'y' }),
+                ...chartOptions({ indexAxis: 'y', maintainAspectRatio: false }),
+                plugins: {
+                    tooltip: {
+                        callbacks: {
+                            label: function(ctx) {
+                                return `  Taxa Severidade: ${ctx.parsed.x.toFixed(2)}%`;
+                            }
+                        }
+                    }
+                },
                 scales: {
                     x: { beginAtZero: true, max: 25, grid: { color: colors.gridLines }, ticks: { font: { family: "'Space Mono', monospace", size: 10 }, callback: v => v + '%' } },
                     y: { grid: { color: colors.gridLines }, ticks: { font: { family: "'Space Mono', monospace", size: 10 } } }
@@ -299,60 +316,13 @@ async function carregarTopCausas() {
         const data = await res.json();
         if (!data.labels?.length) return;
 
-        // Cores baseadas em severidade
-        const bgColors = data.taxa_severidade.map(t =>
-            t > 5  ? 'rgba(255, 64, 64, 0.65)'   :
-            t > 3  ? 'rgba(255, 107, 53, 0.65)'   :
-                     'rgba(0, 200, 255, 0.55)'
-        );
-        const borderColors = data.taxa_severidade.map(t =>
-            t > 5  ? colors.hazard  :
-            t > 3  ? colors.warning :
-                     colors.accent
-        );
-
-        // Encurta labels longos para o gráfico
-        const labelsShort = data.labels.map(l => l.length > 35 ? l.slice(0, 33) + '…' : l);
-
-        if (chartCausas) chartCausas.destroy();
-        chartCausas = new Chart(document.getElementById('topCausas').getContext('2d'), {
-            type: 'bar',
-            data: {
-                labels: labelsShort,
-                datasets: [{
-                    label: 'Acidentes',
-                    data: data.data,
-                    backgroundColor: bgColors,
-                    borderColor: borderColors,
-                    borderWidth: 1,
-                    borderRadius: 5
-                }]
-            },
-            options: {
-                ...chartOptions({ indexAxis: 'y' }),
-                scales: {
-                    x: {
-                        beginAtZero: true,
-                        grid: { color: colors.gridLines },
-                        ticks: { font: { family: "'Space Mono', monospace", size: 10 }, callback: v => v >= 1000 ? (v/1000).toFixed(0)+'k' : v }
-                    },
-                    y: {
-                        grid: { color: colors.gridLines },
-                        ticks: { font: { family: "'Space Mono', monospace", size: 9 } }
-                    }
-                }
-            }
-        });
-
-        // Preenche a tabela lateral
         const tbody = document.getElementById('causasTabelaBody');
         tbody.innerHTML = data.labels.map((causa, i) => {
-            const sev    = data.taxa_severidade[i];
-            const cor    = sev > 5 ? colors.hazard : sev > 3 ? colors.warning : colors.accent;
-            const label  = causa.length > 40 ? causa.slice(0, 38) + '…' : causa;
+            const sev = data.taxa_severidade[i];
+            const cor = sev > 5 ? colors.hazard : sev > 3 ? colors.warning : colors.accent;
             return `
                 <div class="causas-tabela-row">
-                    <span class="causa-nome" title="${causa}">${label}</span>
+                    <span class="causa-nome" title="${causa}">${causa}</span>
                     <span>${formatNum(data.data[i])}</span>
                     <span style="color: ${colors.hazard}">${formatNum(data.mortos[i])}</span>
                     <span style="color: ${cor}; font-weight: 700">${sev.toFixed(1)}%</span>

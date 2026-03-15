@@ -438,10 +438,14 @@ body::after {
 
 /* ─── CAUSAS GRID ────────────────────────────────────── */
 .causas-grid {
-    display: grid;
-    grid-template-columns: 1fr 420px;
+    display: flex;
+    flex-direction: column;
     gap: 20px;
-    align-items: start;
+    
+}
+
+.chart-container.full-width .chart-wrapper {
+    min-height: 500px;
 }
 
 .causas-tabela {

@@ -50,7 +50,9 @@
                 <p class="sidebar-section-label">Período</p>
                 <p style="font-family: var(--font-mono); font-size: 0.65rem; color: var(--text-muted); margin-top: 10px; line-height: 1.8;">
                     2017 — 2024<br>
-                    Fonte: PRF / Kaggle
+                    Fonte: PRF / Kaggle <br>
+                    Autor: Guilherme Nascimento <br>
+                    Github: <a href="https://github.com/guig7/Dashboard_acidentes" target="_blank">guig7</a>
                 </p>
             </div>
         </aside>
@@ -146,7 +148,7 @@
                 <!-- Ranking de Estados -->
                 <div class="chart-container full-width">
                     <h3 class="chart-title">Ranking — Taxa de Severidade por Estado</h3>
-                    <div class="chart-wrapper" style="height: 420px;">
+                    <div class="chart-wrapper" style="height: 1020px;">
                         <canvas id="rankingEstados"></canvas>
                     </div>
                 </div>
@@ -154,20 +156,15 @@
                 <!-- ── NOVO: Top Causas ── -->
                 <div class="chart-container full-width">
                     <h3 class="chart-title">Principais Causas de Acidentes</h3>
-                    <div class="causas-grid">
-                        <div class="chart-wrapper" style="height: 380px;">
-                            <canvas id="topCausas"></canvas>
-                        </div>
-                        <div class="causas-tabela">
-                            <div class="causas-tabela-header">
-                                <span>Causa</span>
-                                <span>Acidentes</span>
-                                <span>Mortos</span>
-                                <span>Severidade</span>
-                            </div>
-                            <div id="causasTabelaBody"></div>
-                        </div>
-                    </div>
+                    <div class="causas-tabela">
+                <div class="causas-tabela-header">
+                     <span>Causa</span>
+                    <span>Acidentes</span>
+                    <span>Mortos</span>
+                    <span>Severidade</span>
+                </div>
+                    <div id="causasTabelaBody"></div>
+                </div>
                 </div>
 
                 <!-- Mapa -->
