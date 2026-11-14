@@ -19,8 +19,10 @@ let chartHeatmap       = null;
 let chartRanking       = null;
 let chartCausas        = null;
 let map                = null;
-let markerClusterGroup = null;
+let accidentPointsLayer = null;
+let accidentPointsRenderer = null;
 let roadLayer           = null;
+let roadGlowLayer       = null;
 let roadGeometries      = new Map();
 let roadAccidents       = new Map();
 let availableRoads      = new Set();
@@ -399,28 +401,11 @@ async function carregarMapa() {
                 opacity: 0.9
             }).addTo(map);
 
-            markerClusterGroup = L.markerClusterGroup({
-                maxClusterRadius: 80,
-                iconCreateFunction: function(cluster) {
-                    const count = cluster.getChildCount();
-                    const color = count > 100 ? '#ff4040' : count > 50 ? '#FF6B35' : '#00c8ff';
-                    const size  = count > 100 ? 44 : count > 50 ? 38 : 32;
-                    return new L.DivIcon({
-                        html: `<div style="
-                            background:${color};border-radius:50%;
-                            width:${size}px;height:${size}px;
-                            display:flex;align-items:center;justify-content:center;
-                            font-family:'Space Mono',monospace;font-size:11px;font-weight:700;
-                            color:#050810;box-shadow:0 0 12px ${color}88;
-                        ">${count}</div>`,
-                        iconSize: [size, size]
-                    });
-                }
-            });
-            map.addLayer(markerClusterGroup);
+            accidentPointsLayer = L.layerGroup().addTo(map);
+            accidentPointsRenderer = L.canvas({ padding: 0.5 });
             window.addEventListener('resize', () => map && map.invalidateSize());
         } else {
-            markerClusterGroup.clearLayers();
+            accidentPointsLayer.clearLayers();
         }
 
         if (window.selectedRoadGeometry) {
@@ -428,6 +413,8 @@ async function carregarMapa() {
         } else if (roadLayer) {
             map.removeLayer(roadLayer);
             roadLayer = null;
+            if (roadGlowLayer) map.removeLayer(roadGlowLayer);
+            roadGlowLayer = null;
         }
 
         if (sequence !== mapLoadSequence) return;
@@ -437,11 +424,6 @@ async function carregarMapa() {
             const stride = Math.ceil(fullCount / 2500);
             registros = registros.filter((_, index) => index % stride === 0).slice(0, 2500);
         }
-
-        const dotIcon = L.divIcon({
-            html: `<div style="width:8px;height:8px;background:#00c8ff;border-radius:50%;box-shadow:0 0 6px #00c8ff88;"></div>`,
-            iconSize: [8, 8], iconAnchor: [4, 4], className: ''
-        });
 
         const popupStyle = `
             font-family:'Space Mono',monospace;
@@ -453,7 +435,7 @@ async function carregarMapa() {
             min-width:220px;
         `;
 
-        const markers = registros.map(r => {
+        registros.forEach(r => {
             const mortosCor  = r.mortos > 0  ? '#ff4040' : '#6b7280';
             const feridosCor = r.feridos > 0 ? '#FF6B35' : '#6b7280';
 
@@ -487,13 +469,21 @@ async function carregarMapa() {
                 </div>
             `);
 
-            return L.marker([r.latitude, r.longitude], { icon: dotIcon }).bindPopup(popup);
+            const hasDeaths = Number(r.mortos) > 0;
+            const point = L.circleMarker([r.latitude, r.longitude], {
+                renderer: accidentPointsRenderer,
+                radius: hasDeaths ? 4.5 : 3.5,
+                color: '#f8fafc',
+                weight: 1,
+                opacity: 0.95,
+                fillColor: hasDeaths ? '#ff3b4f' : '#00e5ff',
+                fillOpacity: 0.9
+            }).bindPopup(popup);
+            accidentPointsLayer.addLayer(point);
         });
 
-        markerClusterGroup.addLayers(markers);
-
-        if (!selectedBr && markerClusterGroup.getLayers().length > 0) {
-            map.fitBounds(new L.featureGroup(markerClusterGroup.getLayers()).getBounds(), { padding: [40, 40] });
+        if (!selectedBr && accidentPointsLayer.getLayers().length > 0) {
+            map.fitBounds(new L.featureGroup(accidentPointsLayer.getLayers()).getBounds(), { padding: [40, 40] });
         }
     } catch(e) { console.error('Mapa:', e); }
 }
@@ -509,18 +499,35 @@ async function carregarJsonEmCache(cache, br, url) {
 
 function mostrarGeometriaRodovia(collection, br, uf) {
     if (roadLayer) map.removeLayer(roadLayer);
+    if (roadGlowLayer) map.removeLayer(roadGlowLayer);
+    const visibleRoute = feature => (!uf || feature.properties.uf === uf) && (!br || feature.properties.br === br);
+
+    if (br) {
+        roadGlowLayer = L.geoJSON(collection, {
+            renderer: L.canvas({ padding: 0.5 }),
+            filter: visibleRoute,
+            interactive: false,
+            style: { color: '#00b8ff', weight: 12, opacity: 0.28 }
+        }).addTo(map);
+    } else {
+        roadGlowLayer = null;
+    }
+
     roadLayer = L.geoJSON(collection, {
         renderer: L.canvas({ padding: 0.5 }),
-        filter: feature => !uf || feature.properties.uf === uf,
-        style: feature => feature.properties.br === br
-            ? { color: '#00c8ff', weight: 4, opacity: 0.95 }
-            : { color: '#8494aa', weight: 1.25, opacity: 0.35 },
+        filter: visibleRoute,
+        style: br
+            ? { color: '#00e5ff', weight: 5, opacity: 1 }
+            : { color: '#00a9c7', weight: 1.8, opacity: 0.58 },
         onEachFeature: (feature, layer) => {
             const featureBr = String(feature.properties.br);
             layer.bindTooltip(`BR-${featureBr}${feature.properties.uf ? ` · ${feature.properties.uf}` : ''}`);
             layer.on('click', () => {
                 const select = document.getElementById('filter-br');
-                if (!availableRoads.has(featureBr)) return;
+                if (!availableRoads.has(featureBr)) {
+                    document.getElementById('map-status').textContent = `BR-${featureBr}: sem acidentes registrados nesta base.`;
+                    return;
+                }
                 select.value = featureBr;
                 carregarMapa();
             });
