@@ -23,8 +23,8 @@ let accidentPointsLayer = null;
 let accidentPointsRenderer = null;
 let roadLayer           = null;
 let roadGlowLayer       = null;
-let countryMaskLayer    = null;
-let countryBorderLayer  = null;
+let countryLayer        = null;
+let stateLayer           = null;
 let roadGeometries      = new Map();
 let roadAccidents       = new Map();
 let availableRoads      = new Set();
@@ -372,10 +372,11 @@ async function carregarMapa() {
         let registros;
 
         if (selectedBr) {
-            const [geometry, rows, boundary] = await Promise.all([
+            const [geometry, rows, boundary, states] = await Promise.all([
                 carregarJsonEmCache(roadGeometries, 'all', '/data/roads/all.geojson'),
                 carregarJsonEmCache(roadAccidents, selectedBr, `/data/roads/accidents/br_${selectedBr}.json`),
-                carregarJsonEmCache(roadGeometries, 'brazil', '/data/roads/brazil.geojson')
+                carregarJsonEmCache(roadGeometries, 'brazil', '/data/roads/brazil.geojson'),
+                carregarJsonEmCache(roadGeometries, 'states', '/data/roads/states.geojson')
             ]);
             if (sequence !== mapLoadSequence) return;
             const [ano, uf] = [document.getElementById('filter-ano').value, document.getElementById('filter-uf').value];
@@ -384,17 +385,20 @@ async function carregarMapa() {
             document.getElementById('map-status').textContent = `BR-${selectedBr}: ${formatNum(registros.length)} acidentes no recorte atual${registros.length > 2500 ? ' (até 2.500 pontos exibidos)' : ''}. O filtro BR afeta o mapa.`;
             window.selectedRoadGeometry = { geometry, br: selectedBr };
             window.brazilBoundary = boundary;
+            window.brazilStates = states;
         } else {
-            const [res, geometry, boundary] = await Promise.all([
+            const [res, geometry, boundary, states] = await Promise.all([
                 fetch(getUrlComFiltros('/api/mapa')),
                 carregarJsonEmCache(roadGeometries, 'all', '/data/roads/all.geojson').catch(() => null),
-                carregarJsonEmCache(roadGeometries, 'brazil', '/data/roads/brazil.geojson').catch(() => null)
+                carregarJsonEmCache(roadGeometries, 'brazil', '/data/roads/brazil.geojson').catch(() => null),
+                carregarJsonEmCache(roadGeometries, 'states', '/data/roads/states.geojson').catch(() => null)
             ]);
             registros = await res.json();
             if (sequence !== mapLoadSequence) return;
             document.getElementById('map-status').textContent = 'Clique em uma BR no mapa ou escolha uma rodovia no seletor.';
             window.selectedRoadGeometry = geometry ? { geometry, br: '' } : null;
             window.brazilBoundary = boundary;
+            window.brazilStates = states;
         }
 
         if (!map) {
@@ -408,11 +412,8 @@ async function carregarMapa() {
                 minZoom: 3
             });
 
-            L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap contributors</a>',
-                maxZoom: 19,
-                opacity: 0.9
-            }).addTo(map);
+            map.attributionControl.setPrefix('');
+            map.attributionControl.addAttribution('Limites: IBGE · Rodovias: DNIT/Infra S.A. · Ocorrências: PRF');
 
             accidentPointsLayer = L.layerGroup().addTo(map);
             accidentPointsRenderer = L.canvas({ padding: 0.5 });
@@ -423,7 +424,7 @@ async function carregarMapa() {
             accidentPointsLayer.clearLayers();
         }
 
-        if (window.brazilBoundary) mostrarMascaraBrasil(window.brazilBoundary);
+        if (window.brazilBoundary && window.brazilStates) mostrarMapaBrasil(window.brazilBoundary, window.brazilStates);
 
         if (window.selectedRoadGeometry) {
             mostrarGeometriaRodovia(window.selectedRoadGeometry.geometry, selectedBr, document.getElementById('filter-uf').value);
@@ -523,24 +524,37 @@ function atualizarRaioPontos() {
     accidentPointsLayer.eachLayer(point => point.setRadius(calcularRaioPonto(point.hasDeaths)));
 }
 
-function mostrarMascaraBrasil(collection) {
-    if (countryMaskLayer || !map) return;
-    const feature = collection.features?.find(item => item.geometry?.type === 'Polygon' || item.geometry?.type === 'MultiPolygon');
-    if (!feature) return;
-    const geometry = feature.geometry;
-    const polygons = geometry.type === 'Polygon' ? [geometry.coordinates] : geometry.coordinates;
-    const worldRing = [[-180, -85], [180, -85], [180, 85], [-180, 85]].map(([lng, lat]) => [lat, lng]);
-    const brazilRings = polygons.map(polygon => polygon[0].map(([lng, lat]) => [lat, lng]));
-    countryMaskLayer = L.polygon([worldRing, ...brazilRings], {
-        stroke: false,
-        fillColor: '#050810',
-        fillOpacity: 1,
-        fillRule: 'evenodd',
+function mostrarMapaBrasil(country, states) {
+    if (countryLayer || !map) return;
+    countryLayer = L.geoJSON(country, {
+        style: { color: '#00d7f5', weight: 2, opacity: 0.9, fillColor: '#0a1728', fillOpacity: 1 },
         interactive: false
     }).addTo(map);
-    countryBorderLayer = L.geoJSON(collection, {
-        style: { color: '#9db4ca', weight: 1, opacity: 0.8, fill: false },
-        interactive: false
+    const stateColors = ['#0b1c30', '#0d2036', '#0a1a2e', '#0c2239'];
+    const stateNames = {
+        '11': 'Rondônia', '12': 'Acre', '13': 'Amazonas', '14': 'Roraima', '15': 'Pará', '16': 'Amapá', '17': 'Tocantins',
+        '21': 'Maranhão', '22': 'Piauí', '23': 'Ceará', '24': 'Rio Grande do Norte', '25': 'Paraíba', '26': 'Pernambuco',
+        '27': 'Alagoas', '28': 'Sergipe', '29': 'Bahia', '31': 'Minas Gerais', '32': 'Espírito Santo', '33': 'Rio de Janeiro',
+        '35': 'São Paulo', '41': 'Paraná', '42': 'Santa Catarina', '43': 'Rio Grande do Sul', '50': 'Mato Grosso do Sul',
+        '51': 'Mato Grosso', '52': 'Goiás', '53': 'Distrito Federal'
+    };
+    stateLayer = L.geoJSON(states, {
+        style: feature => {
+            const id = Number(feature.id ?? feature.properties?.id ?? feature.properties?.codarea ?? 0);
+            return {
+                color: '#1b4664',
+                weight: 1,
+                opacity: 0.9,
+                fillColor: stateColors[Math.abs(id) % stateColors.length],
+                fillOpacity: 0.88
+            };
+        },
+        onEachFeature: (feature, layer) => {
+            const properties = feature.properties || {};
+            const code = String(properties.codarea || feature.id || '');
+            const name = properties.nome || properties.NM_UF || properties.name || stateNames[code] || 'Estado';
+            layer.bindTooltip(name, { sticky: true, className: 'map-state-tooltip' });
+        }
     }).addTo(map);
 }
 

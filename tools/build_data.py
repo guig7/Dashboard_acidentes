@@ -162,22 +162,27 @@ def download_road_geometries(output_dir):
 
 
 def download_brazil_boundary(roads_dir):
-    """Fetch Brazil's outline from IBGE for masking the basemap outside the country."""
+    """Fetch the country outline and state boundaries from IBGE for the custom map."""
     endpoint = "https://servicodados.ibge.gov.br/api/v3/malhas/paises/BR"
     params = {"formato": "application/vnd.geo+json", "qualidade": "minima"}
-    with urlopen(f"{endpoint}?{urlencode(params)}", timeout=60) as response:
-        body = response.read()
-        if body.startswith(b"\x1f\x8b"):
-            body = gzip.decompress(body)
-        collection = json.loads(body.decode("utf-8"))
-    features = collection.get("features", []) if collection.get("type") == "FeatureCollection" else [collection]
-    features = [feature for feature in features if feature.get("geometry", {}).get("type") in {"Polygon", "MultiPolygon"}]
-    if not features:
-        raise RuntimeError("A API de malhas do IBGE não retornou o contorno do Brasil.")
-    (roads_dir / "brazil.geojson").write_text(
-        json.dumps({"type": "FeatureCollection", "features": features}, ensure_ascii=False, separators=(",", ":")),
-        encoding="utf-8",
-    )
+    def fetch_features(query):
+        with urlopen(f"{endpoint}?{urlencode(query)}", timeout=60) as response:
+            body = response.read()
+            if body.startswith(b"\x1f\x8b"):
+                body = gzip.decompress(body)
+            collection = json.loads(body.decode("utf-8"))
+        features = collection.get("features", []) if collection.get("type") == "FeatureCollection" else [collection]
+        return [feature for feature in features if feature.get("geometry", {}).get("type") in {"Polygon", "MultiPolygon"}]
+
+    country_features = fetch_features(params)
+    state_features = fetch_features({**params, "intrarregiao": "UF"})
+    if not country_features or not state_features:
+        raise RuntimeError("A API de malhas do IBGE não retornou o contorno do Brasil e dos estados.")
+    for filename, features in (("brazil.geojson", country_features), ("states.geojson", state_features)):
+        (roads_dir / filename).write_text(
+            json.dumps({"type": "FeatureCollection", "features": features}, ensure_ascii=False, separators=(",", ":")),
+            encoding="utf-8",
+        )
 
 
 def main():

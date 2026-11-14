@@ -36,7 +36,7 @@ Ou informe o caminho para o CSV já baixado:
 python tools/build_data.py --csv caminho/para/datatran2017-2024.csv
 ```
 
-A rotina cria `public/data/summary.json`, além de arquivos de mapa e tabela em `public/data/maps/` e `public/data/tables/`. Também prepara os trajetos oficiais das BRs, o contorno do Brasil para limitar a visualização e os acidentes por rodovia em `public/data/roads/`.
+A rotina cria `public/data/summary.json`, além de arquivos de mapa e tabela em `public/data/maps/` e `public/data/tables/`. Também prepara uma base vetorial própria com o contorno do Brasil e suas 27 UFs, os trajetos oficiais das BRs e os acidentes por rodovia em `public/data/roads/`.
 
 O gerador consulta a camada de rodovias federais do DNIT publicada pela Infra S.A. (SNV 202501A), então precisa de acesso à internet. `--skip-roads` deixa as geometrias existentes sem atualização.
 
@@ -76,7 +76,7 @@ Os endpoints mantêm os nomes usados pelo dashboard e aceitam `?ano=2023` e `?uf
 - `GET /api/mapa`
 - `GET /api/tabela_detalhada`
 
-No mapa, clique em uma linha ou escolha uma BR no seletor para destacar o trajeto e ver os acidentes geolocalizados nessa rodovia. Ano e estado refinam os pontos. O filtro BR afeta apenas o mapa; os demais indicadores continuam agregados por ano e estado.
+O mapa é desenhado pelo próprio dashboard a partir de vetores, sem tiles de mapas externos. As UFs recebem uma paleta escura, com grade e linhas de rodovia em ciano; clique em uma linha ou escolha uma BR para destacar o trajeto e ver os acidentes geolocalizados nessa rodovia. Ano e estado refinam os pontos. O filtro BR afeta apenas o mapa; os demais indicadores continuam agregados por ano e estado.
 
 ## Atualizar a base
 

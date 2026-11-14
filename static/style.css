@@ -497,13 +497,38 @@ body::after {
     height: 480px;
     border-radius: 10px;
     overflow: hidden;
-    background-color: var(--bg-main);
+    background:
+        radial-gradient(ellipse at 50% 45%, rgba(0, 200, 255, 0.10), transparent 52%),
+        linear-gradient(rgba(0, 200, 255, 0.035) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0, 200, 255, 0.035) 1px, transparent 1px),
+        #050b14;
+    background-size: auto, 48px 48px, 48px 48px, auto;
 }
 
 .leaflet-container {
-    background: #060d1a;
+    background: transparent;
     border-radius: 10px;
     font-family: var(--font-body);
+}
+
+.leaflet-control-zoom a {
+    background: #091525 !important;
+    color: #00e5ff !important;
+    border-color: rgba(0, 200, 255, 0.22) !important;
+}
+
+.leaflet-control-attribution {
+    background: rgba(5, 11, 20, 0.84) !important;
+    color: #9aabc0 !important;
+}
+
+.leaflet-control-attribution a { color: #00c8ff !important; }
+
+.map-state-tooltip {
+    background: #071321 !important;
+    color: #bdefff !important;
+    border: 1px solid rgba(0, 200, 255, 0.35) !important;
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4) !important;
 }
 
 /* Popup customizado */
