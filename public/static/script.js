@@ -412,11 +412,19 @@ async function carregarMapa() {
                 minZoom: 3
             });
 
+            [
+                ['countryPane', 400], ['statePane', 410], ['roadGlowPane', 420],
+                ['roadPane', 430], ['accidentPane', 440]
+            ].forEach(([name, zIndex]) => {
+                map.createPane(name);
+                map.getPane(name).style.zIndex = String(zIndex);
+            });
+
             map.attributionControl.setPrefix('');
             map.attributionControl.addAttribution('Limites: IBGE · Rodovias: DNIT/Infra S.A. · Ocorrências: PRF');
 
             accidentPointsLayer = L.layerGroup().addTo(map);
-            accidentPointsRenderer = L.canvas({ padding: 0.5 });
+            accidentPointsRenderer = L.canvas({ pane: 'accidentPane', padding: 0.5 });
             map.fitBounds(brazilBounds, { padding: [18, 18] });
             map.on('zoomend', atualizarRaioPontos);
             window.addEventListener('resize', () => map && map.invalidateSize());
@@ -527,6 +535,7 @@ function atualizarRaioPontos() {
 function mostrarMapaBrasil(country, states) {
     if (countryLayer || !map) return;
     countryLayer = L.geoJSON(country, {
+        pane: 'countryPane',
         style: { color: '#00d7f5', weight: 2, opacity: 0.9, fillColor: '#0a1728', fillOpacity: 1 },
         interactive: false
     }).addTo(map);
@@ -539,6 +548,7 @@ function mostrarMapaBrasil(country, states) {
         '51': 'Mato Grosso', '52': 'Goiás', '53': 'Distrito Federal'
     };
     stateLayer = L.geoJSON(states, {
+        pane: 'statePane',
         style: feature => {
             const id = Number(feature.id ?? feature.properties?.id ?? feature.properties?.codarea ?? 0);
             return {
@@ -565,7 +575,8 @@ function mostrarGeometriaRodovia(collection, br, uf) {
 
     if (br) {
         roadGlowLayer = L.geoJSON(collection, {
-            renderer: L.canvas({ padding: 0.5 }),
+            pane: 'roadGlowPane',
+            renderer: L.canvas({ pane: 'roadGlowPane', padding: 0.5 }),
             filter: visibleRoute,
             interactive: false,
             style: { color: '#00b8ff', weight: 12, opacity: 0.28 }
@@ -575,7 +586,8 @@ function mostrarGeometriaRodovia(collection, br, uf) {
     }
 
     roadLayer = L.geoJSON(collection, {
-        renderer: L.canvas({ padding: 0.5 }),
+        pane: 'roadPane',
+        renderer: L.canvas({ pane: 'roadPane', padding: 0.5 }),
         filter: visibleRoute,
         style: br
             ? { color: '#00e5ff', weight: 5, opacity: 1 }
