@@ -21,6 +21,8 @@ let chartCausas        = null;
 let map                = null;
 let accidentPointsLayer = null;
 let accidentPointsRenderer = null;
+let accidentHeatLayer = null;
+let accidentMode = 'points';
 let roadLayer           = null;
 let roadGlowLayer       = null;
 let countryLayer        = null;
@@ -58,6 +60,9 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('filter-ano').addEventListener('change', carregarTudo);
     document.getElementById('filter-uf').addEventListener('change', carregarTudo);
     document.getElementById('filter-br').addEventListener('change', carregarMapa);
+    document.querySelectorAll('[data-map-mode]').forEach(button => {
+        button.addEventListener('click', () => setAccidentMode(button.dataset.mapMode));
+    });
     carregarListaRodovias();
 });
 
@@ -423,13 +428,31 @@ async function carregarMapa() {
             map.attributionControl.setPrefix('');
             map.attributionControl.addAttribution('Limites: IBGE · Rodovias: DNIT/Infra S.A. · Ocorrências: PRF');
 
-            accidentPointsLayer = L.layerGroup().addTo(map);
+            accidentPointsLayer = L.layerGroup();
             accidentPointsRenderer = L.canvas({ pane: 'accidentPane', padding: 0.5 });
+            accidentHeatLayer = L.heatLayer ? L.heatLayer([], {
+                pane: 'accidentPane',
+                radius: 26,
+                blur: 20,
+                minOpacity: 0.2,
+                maxZoom: 8,
+                max: 1,
+                gradient: { 0.2: '#00c8ff', 0.45: '#62f27b', 0.7: '#ffd23f', 1: '#ff3b4f' }
+            }) : null;
+            if (!accidentHeatLayer) {
+                const heatButton = document.querySelector('[data-map-mode="heat"]');
+                if (heatButton) {
+                    heatButton.disabled = true;
+                    heatButton.title = 'A biblioteca de mapa de calor não carregou.';
+                }
+            }
+            setAccidentMode(accidentMode);
             map.fitBounds(brazilBounds, { padding: [18, 18] });
             map.on('zoomend', atualizarRaioPontos);
             window.addEventListener('resize', () => map && map.invalidateSize());
         } else {
             accidentPointsLayer.clearLayers();
+            if (accidentHeatLayer) accidentHeatLayer.setLatLngs([]);
         }
 
         if (window.brazilBoundary && window.brazilStates) mostrarMapaBrasil(window.brazilBoundary, window.brazilStates);
@@ -461,6 +484,7 @@ async function carregarMapa() {
             min-width:220px;
         `;
 
+        const heatPoints = [];
         registros.forEach(r => {
             const mortosCor  = r.mortos > 0  ? '#ff4040' : '#6b7280';
             const feridosCor = r.feridos > 0 ? '#FF6B35' : '#6b7280';
@@ -496,6 +520,7 @@ async function carregarMapa() {
             `);
 
             const hasDeaths = Number(r.mortos) > 0;
+            heatPoints.push([r.latitude, r.longitude, hasDeaths ? 1 : 0.72]);
             const point = L.circleMarker([r.latitude, r.longitude], {
                 renderer: accidentPointsRenderer,
                 radius: calcularRaioPonto(hasDeaths),
@@ -508,6 +533,8 @@ async function carregarMapa() {
             point.hasDeaths = hasDeaths;
             accidentPointsLayer.addLayer(point);
         });
+        if (accidentHeatLayer) accidentHeatLayer.setLatLngs(heatPoints);
+        setAccidentMode(accidentMode);
 
     } catch(e) { console.error('Mapa:', e); }
 }
@@ -530,6 +557,25 @@ function calcularRaioPonto(hasDeaths) {
 function atualizarRaioPontos() {
     if (!accidentPointsLayer) return;
     accidentPointsLayer.eachLayer(point => point.setRadius(calcularRaioPonto(point.hasDeaths)));
+}
+
+function setAccidentMode(mode) {
+    if (!['points', 'heat', 'none'].includes(mode)) return;
+    if (mode === 'heat' && !accidentHeatLayer) return;
+    accidentMode = mode;
+    document.querySelectorAll('[data-map-mode]').forEach(button => {
+        button.setAttribute('aria-pressed', String(button.dataset.mapMode === mode));
+    });
+    if (!map || !accidentPointsLayer) return;
+
+    const showPoints = mode === 'points';
+    const showHeat = mode === 'heat';
+    if (map.hasLayer(accidentPointsLayer) !== showPoints) {
+        showPoints ? map.addLayer(accidentPointsLayer) : map.removeLayer(accidentPointsLayer);
+    }
+    if (accidentHeatLayer && map.hasLayer(accidentHeatLayer) !== showHeat) {
+        showHeat ? map.addLayer(accidentHeatLayer) : map.removeLayer(accidentHeatLayer);
+    }
 }
 
 function mostrarMapaBrasil(country, states) {

@@ -173,6 +173,12 @@
                         <select id="filter-br" class="custom-select">
                             <option value="">Escolha uma BR</option>
                         </select>
+                        <span class="map-mode-label">Acidentes</span>
+                        <div class="map-mode-switch" role="group" aria-label="Exibição dos acidentes">
+                            <button type="button" data-map-mode="points" aria-pressed="true">Pontos</button>
+                            <button type="button" data-map-mode="heat" aria-pressed="false">Calor</button>
+                            <button type="button" data-map-mode="none" aria-pressed="false">Ocultar</button>
+                        </div>
                         <span id="map-status" role="status">Selecione uma BR para ver o trajeto e seus acidentes.</span>
                     </div>
                     <div id="mapContainer"></div>
@@ -184,6 +190,7 @@
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
     <script>
         function updateTimestamp() {
             const el = document.getElementById('timestamp');

@@ -76,7 +76,7 @@ Os endpoints mantêm os nomes usados pelo dashboard e aceitam `?ano=2023` e `?uf
 - `GET /api/mapa`
 - `GET /api/tabela_detalhada`
 
-O mapa é desenhado pelo próprio dashboard a partir de vetores, sem tiles de mapas externos. As UFs recebem uma paleta escura, com grade e linhas de rodovia em ciano; clique em uma linha ou escolha uma BR para destacar o trajeto e ver os acidentes geolocalizados nessa rodovia. Ano e estado refinam os pontos. O filtro BR afeta apenas o mapa; os demais indicadores continuam agregados por ano e estado.
+O mapa é desenhado pelo próprio dashboard a partir de vetores, sem tiles de mapas externos. As UFs recebem uma paleta escura, com grade e linhas de rodovia em ciano; clique em uma linha ou escolha uma BR para destacar o trajeto e ver os acidentes geolocalizados nessa rodovia. Alterne a camada de acidentes entre pontos, calor ou oculto. Ano e estado refinam os pontos. O filtro BR afeta apenas o mapa; os demais indicadores continuam agregados por ano e estado.
 
 ## Atualizar a base
 

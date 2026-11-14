@@ -605,12 +605,45 @@ body::after {
 
 .map-toolbar label { color: var(--text-main); font-weight: 600; }
 .map-toolbar .custom-select { min-width: 170px; }
+.map-mode-label { color: var(--text-main); font-weight: 600; }
 #map-status { flex: 1 1 260px; line-height: 1.5; }
+
+.map-mode-switch {
+    display: inline-flex;
+    overflow: hidden;
+    border: 1px solid rgba(0, 200, 255, 0.24);
+    border-radius: 8px;
+    background: rgba(3, 10, 19, 0.72);
+}
+
+.map-mode-switch button {
+    min-height: 34px;
+    padding: 0 12px;
+    border: 0;
+    border-right: 1px solid rgba(0, 200, 255, 0.14);
+    background: transparent;
+    color: var(--text-muted);
+    font: inherit;
+    cursor: pointer;
+    transition: color 150ms ease, background-color 150ms ease;
+}
+
+.map-mode-switch button:last-child { border-right: 0; }
+.map-mode-switch button:hover { color: var(--text-main); }
+.map-mode-switch button:disabled { opacity: 0.45; cursor: not-allowed; }
+.map-mode-switch button[aria-pressed="true"] {
+    background: rgba(0, 200, 255, 0.16);
+    color: #baf5ff;
+}
+.map-mode-switch button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 
 @media (max-width: 560px) {
     .map-toolbar { align-items: stretch; }
     .map-toolbar label { flex-basis: 100%; }
     .map-toolbar .custom-select { width: 100%; }
+    .map-mode-label { flex-basis: 100%; }
+    .map-mode-switch { width: 100%; }
+    .map-mode-switch button { flex: 1; }
 }
 
 /* ─── RESPONSIVE LAYOUT ───────────────────────────────── */
