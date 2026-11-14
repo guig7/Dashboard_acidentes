@@ -1,8 +1,6 @@
 """Cloudflare Worker entry point for the PRF dashboard."""
 
 import json
-import mimetypes
-from pathlib import PurePosixPath
 
 from flask import Flask, Response, abort, jsonify, request
 from pyodide.ffi import run_sync
@@ -122,19 +120,6 @@ def tabela_detalhada():
         status=response.status,
         content_type="application/json; charset=utf-8",
     )
-
-
-@app.get("/")
-@app.get("/<path:path>")
-def static_assets(path=""):
-    asset_path = str(PurePosixPath(path or "index.html"))
-    if asset_path.startswith("/") or ".." in PurePosixPath(asset_path).parts:
-        abort(404)
-    response = asset_response(asset_path)
-    if response.status >= 400:
-        abort(404)
-    content_type = mimetypes.guess_type(asset_path)[0] or "application/octet-stream"
-    return Response(run_sync(response.bytes()), status=response.status, content_type=content_type)
 
 
 @app.errorhandler(400)
