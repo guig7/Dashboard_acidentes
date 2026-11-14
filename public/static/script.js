@@ -432,12 +432,12 @@ async function carregarMapa() {
             accidentPointsRenderer = L.canvas({ pane: 'accidentPane', padding: 0.5 });
             accidentHeatLayer = L.heatLayer ? L.heatLayer([], {
                 pane: 'accidentPane',
-                radius: 26,
-                blur: 20,
-                minOpacity: 0.2,
+                radius: 14,
+                blur: 8,
+                minOpacity: 0.08,
                 maxZoom: 8,
                 max: 1,
-                gradient: { 0.2: '#00c8ff', 0.45: '#62f27b', 0.7: '#ffd23f', 1: '#ff3b4f' }
+                gradient: { 0.15: '#00c8ff', 0.35: '#54e18b', 0.6: '#ffd84a', 0.82: '#ff832e', 1: '#ff3b4f' }
             }) : null;
             if (!accidentHeatLayer) {
                 const heatButton = document.querySelector('[data-map-mode="heat"]');
@@ -520,7 +520,7 @@ async function carregarMapa() {
             `);
 
             const hasDeaths = Number(r.mortos) > 0;
-            heatPoints.push([r.latitude, r.longitude, hasDeaths ? 1 : 0.72]);
+            heatPoints.push([r.latitude, r.longitude, hasDeaths ? 0.55 : 0.32]);
             const point = L.circleMarker([r.latitude, r.longitude], {
                 renderer: accidentPointsRenderer,
                 radius: calcularRaioPonto(hasDeaths),
