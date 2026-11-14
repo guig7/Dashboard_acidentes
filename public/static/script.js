@@ -343,8 +343,8 @@ async function carregarMapa() {
             map = L.map('mapContainer', { zoomControl: true, attributionControl: true })
                    .setView([-14.2, -51.9], 4);
 
-            L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-                attribution: '© OpenStreetMap © CARTO',
+            L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap contributors</a>',
                 maxZoom: 19,
                 opacity: 0.9
             }).addTo(map);
