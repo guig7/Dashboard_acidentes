@@ -6,7 +6,7 @@ Painel interativo para análise de acidentes em rodovias federais brasileiras (2
 
 O Worker serve a interface estática e a API Flask. Para manter a inicialização leve e evitar baixar centenas de milhares de registros em cada execução, a base é pré-processada fora da Cloudflare em arquivos JSON compactos, organizados pelos filtros de ano e UF. O mapa retorna amostras limitadas: 2.000 ocorrências sem filtro e até 500 por combinação filtrada.
 
-A rotina de geração usa o CSV do dataset Kaggle `guilherme2008/acidentes-em-rodovias-federais`. O CSV e os JSONs gerados não são incluídos no Git.
+A rotina de geração usa o CSV do dataset Kaggle `guilherme2008/acidentes-em-rodovias-federais`. O CSV bruto não é incluído no Git. Os JSONs gerados em `public/data/` precisam ser adicionados e enviados ao GitHub para estarem disponíveis no deploy.
 
 ## Pré-requisitos
 
