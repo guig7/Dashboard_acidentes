@@ -419,11 +419,12 @@ async function carregarMapa() {
 
             [
                 ['countryPane', 400], ['statePane', 410], ['roadGlowPane', 420],
-                ['heatPane', 425], ['roadPane', 430], ['accidentPane', 440]
+                ['roadPane', 430], ['accidentPane', 440]
             ].forEach(([name, zIndex]) => {
                 map.createPane(name);
                 map.getPane(name).style.zIndex = String(zIndex);
             });
+            map.getPane('overlayPane').style.zIndex = '425';
 
             map.attributionControl.setPrefix('');
             map.attributionControl.addAttribution('Limites: IBGE · Rodovias: DNIT/Infra S.A. · Ocorrências: PRF');
@@ -431,7 +432,6 @@ async function carregarMapa() {
             accidentPointsLayer = L.layerGroup();
             accidentPointsRenderer = L.canvas({ pane: 'accidentPane', padding: 0.5 });
             accidentHeatLayer = L.heatLayer ? L.heatLayer([], {
-                pane: 'heatPane',
                 radius: 14,
                 blur: 8,
                 minOpacity: 0.08,
@@ -575,12 +575,6 @@ function setAccidentMode(mode) {
     }
     if (accidentHeatLayer && map.hasLayer(accidentHeatLayer) !== showHeat) {
         showHeat ? map.addLayer(accidentHeatLayer) : map.removeLayer(accidentHeatLayer);
-    }
-    if (showHeat && accidentHeatLayer && map.hasLayer(accidentHeatLayer)) {
-        const heatCanvas = accidentHeatLayer._canvas;
-        const heatPane = map.getPane('heatPane');
-        if (heatCanvas && heatPane && heatCanvas.parentElement !== heatPane) heatPane.appendChild(heatCanvas);
-        accidentHeatLayer.redraw();
     }
 }
 
