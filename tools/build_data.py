@@ -6,6 +6,7 @@ Usage:
 """
 
 import argparse
+import gzip
 import json
 from pathlib import Path
 from urllib.parse import urlencode
@@ -156,7 +157,27 @@ def download_road_geometries(output_dir):
     )
     manifest = [{"br": br, "trechos": len(features)} for br, features in sorted(grouped.items())]
     (roads_dir / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+    download_brazil_boundary(roads_dir)
     return grouped
+
+
+def download_brazil_boundary(roads_dir):
+    """Fetch Brazil's outline from IBGE for masking the basemap outside the country."""
+    endpoint = "https://servicodados.ibge.gov.br/api/v3/malhas/paises/BR"
+    params = {"formato": "application/vnd.geo+json", "qualidade": "minima"}
+    with urlopen(f"{endpoint}?{urlencode(params)}", timeout=60) as response:
+        body = response.read()
+        if body.startswith(b"\x1f\x8b"):
+            body = gzip.decompress(body)
+        collection = json.loads(body.decode("utf-8"))
+    features = collection.get("features", []) if collection.get("type") == "FeatureCollection" else [collection]
+    features = [feature for feature in features if feature.get("geometry", {}).get("type") in {"Polygon", "MultiPolygon"}]
+    if not features:
+        raise RuntimeError("A API de malhas do IBGE não retornou o contorno do Brasil.")
+    (roads_dir / "brazil.geojson").write_text(
+        json.dumps({"type": "FeatureCollection", "features": features}, ensure_ascii=False, separators=(",", ":")),
+        encoding="utf-8",
+    )
 
 
 def main():

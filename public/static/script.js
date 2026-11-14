@@ -23,6 +23,8 @@ let accidentPointsLayer = null;
 let accidentPointsRenderer = null;
 let roadLayer           = null;
 let roadGlowLayer       = null;
+let countryMaskLayer    = null;
+let countryBorderLayer  = null;
 let roadGeometries      = new Map();
 let roadAccidents       = new Map();
 let availableRoads      = new Set();
@@ -370,9 +372,10 @@ async function carregarMapa() {
         let registros;
 
         if (selectedBr) {
-            const [geometry, rows] = await Promise.all([
+            const [geometry, rows, boundary] = await Promise.all([
                 carregarJsonEmCache(roadGeometries, 'all', '/data/roads/all.geojson'),
-                carregarJsonEmCache(roadAccidents, selectedBr, `/data/roads/accidents/br_${selectedBr}.json`)
+                carregarJsonEmCache(roadAccidents, selectedBr, `/data/roads/accidents/br_${selectedBr}.json`),
+                carregarJsonEmCache(roadGeometries, 'brazil', '/data/roads/brazil.geojson')
             ]);
             if (sequence !== mapLoadSequence) return;
             const [ano, uf] = [document.getElementById('filter-ano').value, document.getElementById('filter-uf').value];
@@ -380,20 +383,30 @@ async function carregarMapa() {
                 .map(row => ({ latitude: row[0], longitude: row[1], uf: row[2], municipio: row[3], data: row[4], horario: row[5], causa_acidente: row[6], classificacao_acidente: row[7], mortos: row[8], feridos: row[9], km: row[10], ano: row[11] }));
             document.getElementById('map-status').textContent = `BR-${selectedBr}: ${formatNum(registros.length)} acidentes no recorte atual${registros.length > 2500 ? ' (até 2.500 pontos exibidos)' : ''}. O filtro BR afeta o mapa.`;
             window.selectedRoadGeometry = { geometry, br: selectedBr };
+            window.brazilBoundary = boundary;
         } else {
-            const [res, geometry] = await Promise.all([
+            const [res, geometry, boundary] = await Promise.all([
                 fetch(getUrlComFiltros('/api/mapa')),
-                carregarJsonEmCache(roadGeometries, 'all', '/data/roads/all.geojson').catch(() => null)
+                carregarJsonEmCache(roadGeometries, 'all', '/data/roads/all.geojson').catch(() => null),
+                carregarJsonEmCache(roadGeometries, 'brazil', '/data/roads/brazil.geojson').catch(() => null)
             ]);
             registros = await res.json();
             if (sequence !== mapLoadSequence) return;
             document.getElementById('map-status').textContent = 'Clique em uma BR no mapa ou escolha uma rodovia no seletor.';
             window.selectedRoadGeometry = geometry ? { geometry, br: '' } : null;
+            window.brazilBoundary = boundary;
         }
 
         if (!map) {
-            map = L.map('mapContainer', { zoomControl: true, attributionControl: true })
-                   .setView([-14.2, -51.9], 4);
+            const brazilBounds = L.latLngBounds([-34.0, -74.0], [5.4, -34.7]);
+            const brazilPanBounds = L.latLngBounds([-36.0, -76.0], [7.5, -32.0]);
+            map = L.map('mapContainer', {
+                zoomControl: true,
+                attributionControl: true,
+                maxBounds: brazilPanBounds,
+                maxBoundsViscosity: 0.95,
+                minZoom: 3
+            });
 
             L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
                 attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap contributors</a>',
@@ -403,10 +416,14 @@ async function carregarMapa() {
 
             accidentPointsLayer = L.layerGroup().addTo(map);
             accidentPointsRenderer = L.canvas({ padding: 0.5 });
+            map.fitBounds(brazilBounds, { padding: [18, 18] });
+            map.on('zoomend', atualizarRaioPontos);
             window.addEventListener('resize', () => map && map.invalidateSize());
         } else {
             accidentPointsLayer.clearLayers();
         }
+
+        if (window.brazilBoundary) mostrarMascaraBrasil(window.brazilBoundary);
 
         if (window.selectedRoadGeometry) {
             mostrarGeometriaRodovia(window.selectedRoadGeometry.geometry, selectedBr, document.getElementById('filter-uf').value);
@@ -472,19 +489,17 @@ async function carregarMapa() {
             const hasDeaths = Number(r.mortos) > 0;
             const point = L.circleMarker([r.latitude, r.longitude], {
                 renderer: accidentPointsRenderer,
-                radius: hasDeaths ? 4.5 : 3.5,
+                radius: calcularRaioPonto(hasDeaths),
                 color: '#f8fafc',
                 weight: 1,
                 opacity: 0.95,
                 fillColor: hasDeaths ? '#ff3b4f' : '#00e5ff',
                 fillOpacity: 0.9
             }).bindPopup(popup);
+            point.hasDeaths = hasDeaths;
             accidentPointsLayer.addLayer(point);
         });
 
-        if (!selectedBr && accidentPointsLayer.getLayers().length > 0) {
-            map.fitBounds(new L.featureGroup(accidentPointsLayer.getLayers()).getBounds(), { padding: [40, 40] });
-        }
     } catch(e) { console.error('Mapa:', e); }
 }
 
@@ -495,6 +510,38 @@ async function carregarJsonEmCache(cache, br, url) {
         cache.set(br, await response.json());
     }
     return cache.get(br);
+}
+
+function calcularRaioPonto(hasDeaths) {
+    const zoom = map?.getZoom() ?? 4;
+    const base = Math.max(1.3, Math.min(3.4, 1.3 + (zoom - 4) * 0.42));
+    return base + (hasDeaths ? 0.4 : 0);
+}
+
+function atualizarRaioPontos() {
+    if (!accidentPointsLayer) return;
+    accidentPointsLayer.eachLayer(point => point.setRadius(calcularRaioPonto(point.hasDeaths)));
+}
+
+function mostrarMascaraBrasil(collection) {
+    if (countryMaskLayer || !map) return;
+    const feature = collection.features?.find(item => item.geometry?.type === 'Polygon' || item.geometry?.type === 'MultiPolygon');
+    if (!feature) return;
+    const geometry = feature.geometry;
+    const polygons = geometry.type === 'Polygon' ? [geometry.coordinates] : geometry.coordinates;
+    const worldRing = [[-180, -85], [180, -85], [180, 85], [-180, 85]].map(([lng, lat]) => [lat, lng]);
+    const brazilRings = polygons.map(polygon => polygon[0].map(([lng, lat]) => [lat, lng]));
+    countryMaskLayer = L.polygon([worldRing, ...brazilRings], {
+        stroke: false,
+        fillColor: '#050810',
+        fillOpacity: 1,
+        fillRule: 'evenodd',
+        interactive: false
+    }).addTo(map);
+    countryBorderLayer = L.geoJSON(collection, {
+        style: { color: '#9db4ca', weight: 1, opacity: 0.8, fill: false },
+        interactive: false
+    }).addTo(map);
 }
 
 function mostrarGeometriaRodovia(collection, br, uf) {

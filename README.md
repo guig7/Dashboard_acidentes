@@ -36,7 +36,7 @@ Ou informe o caminho para o CSV já baixado:
 python tools/build_data.py --csv caminho/para/datatran2017-2024.csv
 ```
 
-A rotina cria `public/data/summary.json`, além de arquivos de mapa e tabela em `public/data/maps/` e `public/data/tables/`. Também prepara os trajetos oficiais das BRs em `public/data/roads/all.geojson` e os acidentes por rodovia em `public/data/roads/accidents/`.
+A rotina cria `public/data/summary.json`, além de arquivos de mapa e tabela em `public/data/maps/` e `public/data/tables/`. Também prepara os trajetos oficiais das BRs, o contorno do Brasil para limitar a visualização e os acidentes por rodovia em `public/data/roads/`.
 
 O gerador consulta a camada de rodovias federais do DNIT publicada pela Infra S.A. (SNV 202501A), então precisa de acesso à internet. `--skip-roads` deixa as geometrias existentes sem atualização.
 
@@ -82,7 +82,7 @@ No mapa, clique em uma linha ou escolha uma BR no seletor para destacar o trajet
 
 Baixe a versão atualizada do CSV e rode novamente `python tools/build_data.py --csv ...`. Confira e versione os arquivos novos em `public/data/roads/` junto dos dados existentes. Depois, publique a nova versão com `uv run pywrangler deploy`.
 
-Fonte das geometrias: [DNIT/Infra S.A. — Rodovias Federais (SNV 202501A)](https://geo.infrasa.gov.br/server/rest/services/Hosted/Rodovias_Federais/FeatureServer/0).
+Fontes das geometrias: [DNIT/Infra S.A. — Rodovias Federais (SNV 202501A)](https://geo.infrasa.gov.br/server/rest/services/Hosted/Rodovias_Federais/FeatureServer/0) e [IBGE — API de Malhas Geográficas](https://servicodados.ibge.gov.br/api/docs/malhas?versao=3).
 
 > Os arquivos em `public/data/` precisam existir antes do deploy. Sem eles, o Worker retorna HTTP 503 nas rotas de dados.
 
