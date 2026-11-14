@@ -20,6 +20,11 @@ let chartRanking       = null;
 let chartCausas        = null;
 let map                = null;
 let markerClusterGroup = null;
+let roadLayer           = null;
+let roadGeometries      = new Map();
+let roadAccidents       = new Map();
+let availableRoads      = new Set();
+let mapLoadSequence     = 0;
 
 // ─── URL HELPERS ──────────────────────────────────────────────────────────────
 function getUrlComFiltros(basePath) {
@@ -48,6 +53,8 @@ document.addEventListener('DOMContentLoaded', () => {
     setTimeout(carregarTudo, 120);
     document.getElementById('filter-ano').addEventListener('change', carregarTudo);
     document.getElementById('filter-uf').addEventListener('change', carregarTudo);
+    document.getElementById('filter-br').addEventListener('change', carregarMapa);
+    carregarListaRodovias();
 });
 
 // ─── FORMATTERS ───────────────────────────────────────────────────────────────
@@ -185,7 +192,7 @@ async function carregarMortosAno() {
                     backgroundColor: grad,
                     borderRadius: 5,
                     barPercentage: 0.55
-                    
+
                 }]
             },
             options: chartOptions()
@@ -280,7 +287,7 @@ async function carregarRankingEstados() {
             type: 'bar',
             data: {
                 labels: data.labels,
-                datasets: [{ 
+                datasets: [{
                     label: 'Taxa Severidade (%)',
                     data: data.taxa_severidade,
                     backgroundColor: bgColors,
@@ -333,11 +340,54 @@ async function carregarTopCausas() {
     } catch(e) { console.error('Top causas:', e); }
 }
 
-// ─── MAPA COM POPUP ───────────────────────────────────────────────────────────
+// ─── MAPA COM TRAJETOS OFICIAIS E ACIDENTES ──────────────────────────────────
+async function carregarListaRodovias() {
+    try {
+        const [manifestResponse, accidentsResponse] = await Promise.all([
+            fetch('/data/roads/manifest.json'),
+            fetch('/data/roads/accident_manifest.json')
+        ]);
+        if (!manifestResponse.ok || !accidentsResponse.ok) throw new Error('Arquivos das rodovias ainda não foram gerados.');
+        const [segments, accidents] = await Promise.all([manifestResponse.json(), accidentsResponse.json()]);
+        availableRoads = new Set(accidents.map(String));
+        const select = document.getElementById('filter-br');
+        select.innerHTML = '<option value="">Escolha uma BR</option>' + segments
+            .filter(route => availableRoads.has(String(route.br)))
+            .map(route => `<option value="${route.br}">BR-${route.br}</option>`).join('');
+        document.getElementById('map-status').textContent = `${availableRoads.size} rodovias com acidentes disponíveis. Clique em uma linha ou escolha uma BR.`;
+    } catch (error) {
+        document.getElementById('map-status').textContent = 'Os dados dos trajetos não estão disponíveis. Gere os dados atualizados para habilitar a seleção por BR.';
+        console.error('Rodovias:', error);
+    }
+}
+
 async function carregarMapa() {
     try {
-        const res         = await fetch(getUrlComFiltros('/api/mapa'));
-        const registros   = await res.json();
+        const sequence = ++mapLoadSequence;
+        const selectedBr = document.getElementById('filter-br').value;
+        let registros;
+
+        if (selectedBr) {
+            const [geometry, rows] = await Promise.all([
+                carregarJsonEmCache(roadGeometries, 'all', '/data/roads/all.geojson'),
+                carregarJsonEmCache(roadAccidents, selectedBr, `/data/roads/accidents/br_${selectedBr}.json`)
+            ]);
+            if (sequence !== mapLoadSequence) return;
+            const [ano, uf] = [document.getElementById('filter-ano').value, document.getElementById('filter-uf').value];
+            registros = rows.filter(row => (!ano || String(row[11]) === ano) && (!uf || row[2] === uf))
+                .map(row => ({ latitude: row[0], longitude: row[1], uf: row[2], municipio: row[3], data: row[4], horario: row[5], causa_acidente: row[6], classificacao_acidente: row[7], mortos: row[8], feridos: row[9], km: row[10], ano: row[11] }));
+            document.getElementById('map-status').textContent = `BR-${selectedBr}: ${formatNum(registros.length)} acidentes no recorte atual${registros.length > 2500 ? ' (até 2.500 pontos exibidos)' : ''}. O filtro BR afeta o mapa.`;
+            window.selectedRoadGeometry = { geometry, br: selectedBr };
+        } else {
+            const [res, geometry] = await Promise.all([
+                fetch(getUrlComFiltros('/api/mapa')),
+                carregarJsonEmCache(roadGeometries, 'all', '/data/roads/all.geojson').catch(() => null)
+            ]);
+            registros = await res.json();
+            if (sequence !== mapLoadSequence) return;
+            document.getElementById('map-status').textContent = 'Clique em uma BR no mapa ou escolha uma rodovia no seletor.';
+            window.selectedRoadGeometry = geometry ? { geometry, br: '' } : null;
+        }
 
         if (!map) {
             map = L.map('mapContainer', { zoomControl: true, attributionControl: true })
@@ -373,6 +423,21 @@ async function carregarMapa() {
             markerClusterGroup.clearLayers();
         }
 
+        if (window.selectedRoadGeometry) {
+            mostrarGeometriaRodovia(window.selectedRoadGeometry.geometry, selectedBr, document.getElementById('filter-uf').value);
+        } else if (roadLayer) {
+            map.removeLayer(roadLayer);
+            roadLayer = null;
+        }
+
+        if (sequence !== mapLoadSequence) return;
+        const fullCount = registros.length;
+        if (fullCount > 2500) {
+            // Stable sampling keeps the map responsive while retaining broad geographic coverage.
+            const stride = Math.ceil(fullCount / 2500);
+            registros = registros.filter((_, index) => index % stride === 0).slice(0, 2500);
+        }
+
         const dotIcon = L.divIcon({
             html: `<div style="width:8px;height:8px;background:#00c8ff;border-radius:50%;box-shadow:0 0 6px #00c8ff88;"></div>`,
             iconSize: [8, 8], iconAnchor: [4, 4], className: ''
@@ -395,7 +460,7 @@ async function carregarMapa() {
             const popup = L.popup({ maxWidth: 280, className: 'custom-popup' }).setContent(`
                 <div style="${popupStyle}">
                     <div style="background:rgba(0,200,255,0.08);padding:10px 14px;border-bottom:1px solid rgba(0,200,255,0.1);border-radius:10px 10px 0 0;">
-                        <div style="font-size:0.7rem;color:#6b7280;letter-spacing:1px;text-transform:uppercase;">Município</div>
+                        <div style="font-size:0.7rem;color:#6b7280;letter-spacing:1px;text-transform:uppercase;">${selectedBr ? `BR-${selectedBr} · KM ${r.km ?? '—'}` : 'Município'}</div>
                         <div style="font-size:0.95rem;font-weight:700;color:#e8eaf2;margin-top:2px;">${r.municipio} / ${r.uf}</div>
                     </div>
                     <div style="padding:10px 14px;display:flex;flex-direction:column;gap:6px;">
@@ -427,10 +492,45 @@ async function carregarMapa() {
 
         markerClusterGroup.addLayers(markers);
 
-        if (markerClusterGroup.getLayers().length > 0) {
+        if (!selectedBr && markerClusterGroup.getLayers().length > 0) {
             map.fitBounds(new L.featureGroup(markerClusterGroup.getLayers()).getBounds(), { padding: [40, 40] });
         }
     } catch(e) { console.error('Mapa:', e); }
+}
+
+async function carregarJsonEmCache(cache, br, url) {
+    if (!cache.has(br)) {
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(`Falha ao carregar ${url}`);
+        cache.set(br, await response.json());
+    }
+    return cache.get(br);
+}
+
+function mostrarGeometriaRodovia(collection, br, uf) {
+    if (roadLayer) map.removeLayer(roadLayer);
+    roadLayer = L.geoJSON(collection, {
+        renderer: L.canvas({ padding: 0.5 }),
+        filter: feature => !uf || feature.properties.uf === uf,
+        style: feature => feature.properties.br === br
+            ? { color: '#00c8ff', weight: 4, opacity: 0.95 }
+            : { color: '#8494aa', weight: 1.25, opacity: 0.35 },
+        onEachFeature: (feature, layer) => {
+            const featureBr = String(feature.properties.br);
+            layer.bindTooltip(`BR-${featureBr}${feature.properties.uf ? ` · ${feature.properties.uf}` : ''}`);
+            layer.on('click', () => {
+                const select = document.getElementById('filter-br');
+                if (!availableRoads.has(featureBr)) return;
+                select.value = featureBr;
+                carregarMapa();
+            });
+        }
+    }).addTo(map);
+    if (br) {
+        const selectedSegments = L.geoJSON(collection, { filter: feature => feature.properties.br === br && (!uf || feature.properties.uf === uf) });
+        const bounds = selectedSegments.getBounds();
+        if (bounds.isValid()) map.fitBounds(bounds, { padding: [32, 32], maxZoom: 8 });
+    }
 }
 
 // ─── ANIMATE VALUE ────────────────────────────────────────────────────────────

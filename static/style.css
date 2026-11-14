@@ -441,7 +441,7 @@ body::after {
     display: flex;
     flex-direction: column;
     gap: 20px;
-    
+
 }
 
 .chart-container.full-width .chart-wrapper {
@@ -567,6 +567,26 @@ body::after {
 .charts-grid > *:nth-child(5) { animation: fadeUp 0.5s 0.52s ease both; }
 .charts-grid > *:nth-child(6) { animation: fadeUp 0.5s 0.60s ease both; }
 .charts-grid > *:nth-child(7) { animation: fadeUp 0.5s 0.68s ease both; }
+
+.map-toolbar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px 14px;
+    margin: 0 0 14px;
+    color: var(--text-muted);
+    font-size: 0.78rem;
+}
+
+.map-toolbar label { color: var(--text-main); font-weight: 600; }
+.map-toolbar .custom-select { min-width: 170px; }
+#map-status { flex: 1 1 260px; line-height: 1.5; }
+
+@media (max-width: 560px) {
+    .map-toolbar { align-items: stretch; }
+    .map-toolbar label { flex-basis: 100%; }
+    .map-toolbar .custom-select { width: 100%; }
+}
 
 /* ─── RESPONSIVE LAYOUT ───────────────────────────────── */
 .dashboard-container {

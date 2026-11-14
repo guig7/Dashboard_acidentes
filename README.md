@@ -6,7 +6,7 @@ Painel interativo para análise de acidentes em rodovias federais brasileiras (2
 
 O Worker serve a interface estática e a API Flask. Para manter a inicialização leve e evitar baixar centenas de milhares de registros em cada execução, a base é pré-processada fora da Cloudflare em arquivos JSON compactos, organizados pelos filtros de ano e UF. O mapa retorna amostras limitadas: 2.000 ocorrências sem filtro e até 500 por combinação filtrada.
 
-A rotina de geração usa o CSV do dataset Kaggle `guilherme2008/acidentes-em-rodovias-federais`. O CSV bruto não é incluído no Git. Os JSONs gerados em `public/data/` precisam ser adicionados e enviados ao GitHub para estarem disponíveis no deploy.
+A rotina de geração usa o CSV do dataset Kaggle `guilherme2008/acidentes-em-rodovias-federais`. O CSV bruto não é incluído no Git; os JSONs derivados ficam em `public/data/` e precisam ser versionados para o Worker os servir.
 
 ## Pré-requisitos
 
@@ -36,7 +36,9 @@ Ou informe o caminho para o CSV já baixado:
 python tools/build_data.py --csv caminho/para/datatran2017-2024.csv
 ```
 
-A rotina cria `public/data/summary.json`, além de arquivos de mapa e tabela em `public/data/maps/` e `public/data/tables/`.
+A rotina cria `public/data/summary.json`, além de arquivos de mapa e tabela em `public/data/maps/` e `public/data/tables/`. Também prepara os trajetos oficiais das BRs em `public/data/roads/all.geojson` e os acidentes por rodovia em `public/data/roads/accidents/`.
+
+O gerador consulta a camada de rodovias federais do DNIT publicada pela Infra S.A. (SNV 202501A), então precisa de acesso à internet. `--skip-roads` deixa as geometrias existentes sem atualização.
 
 ## 2. Rodar localmente
 
@@ -74,9 +76,13 @@ Os endpoints mantêm os nomes usados pelo dashboard e aceitam `?ano=2023` e `?uf
 - `GET /api/mapa`
 - `GET /api/tabela_detalhada`
 
+No mapa, clique em uma linha ou escolha uma BR no seletor para destacar o trajeto e ver os acidentes geolocalizados nessa rodovia. Ano e estado refinam os pontos. O filtro BR afeta apenas o mapa; os demais indicadores continuam agregados por ano e estado.
+
 ## Atualizar a base
 
-Baixe a versão atualizada do CSV e rode novamente `python tools/build_data.py --csv ...`. Depois, publique a nova versão com `uv run pywrangler deploy`.
+Baixe a versão atualizada do CSV e rode novamente `python tools/build_data.py --csv ...`. Confira e versione os arquivos novos em `public/data/roads/` junto dos dados existentes. Depois, publique a nova versão com `uv run pywrangler deploy`.
+
+Fonte das geometrias: [DNIT/Infra S.A. — Rodovias Federais (SNV 202501A)](https://geo.infrasa.gov.br/server/rest/services/Hosted/Rodovias_Federais/FeatureServer/0).
 
 > Os arquivos em `public/data/` precisam existir antes do deploy. Sem eles, o Worker retorna HTTP 503 nas rotas de dados.
 

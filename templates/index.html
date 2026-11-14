@@ -170,6 +170,13 @@
                 <!-- Mapa -->
                 <div class="chart-container full-width">
                     <h3 class="chart-title">Mapa Geográfico de Acidentes</h3>
+                    <div class="map-toolbar">
+                        <label for="filter-br">Rodovia no mapa</label>
+                        <select id="filter-br" class="custom-select">
+                            <option value="">Escolha uma BR</option>
+                        </select>
+                        <span id="map-status" role="status">Selecione uma BR para ver o trajeto e seus acidentes.</span>
+                    </div>
                     <div id="mapContainer"></div>
                 </div>
 
