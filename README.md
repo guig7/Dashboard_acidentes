@@ -21,7 +21,7 @@ A rotina de geração usa o CSV do dataset Kaggle `guilherme2008/acidentes-em-ro
 Instale as dependências da etapa de pré-processamento:
 
 ```bash
-python -m pip install -r requirements.txt
+python -m pip install -r requirements-data.txt
 ```
 
 Com credenciais Kaggle configuradas:
