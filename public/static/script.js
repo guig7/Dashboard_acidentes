@@ -419,7 +419,7 @@ async function carregarMapa() {
 
             [
                 ['countryPane', 400], ['statePane', 410], ['roadGlowPane', 420],
-                ['roadPane', 430], ['accidentPane', 440]
+                ['heatPane', 425], ['roadPane', 430], ['accidentPane', 440]
             ].forEach(([name, zIndex]) => {
                 map.createPane(name);
                 map.getPane(name).style.zIndex = String(zIndex);
@@ -431,7 +431,7 @@ async function carregarMapa() {
             accidentPointsLayer = L.layerGroup();
             accidentPointsRenderer = L.canvas({ pane: 'accidentPane', padding: 0.5 });
             accidentHeatLayer = L.heatLayer ? L.heatLayer([], {
-                pane: 'accidentPane',
+                pane: 'heatPane',
                 radius: 14,
                 blur: 8,
                 minOpacity: 0.08,
@@ -575,6 +575,12 @@ function setAccidentMode(mode) {
     }
     if (accidentHeatLayer && map.hasLayer(accidentHeatLayer) !== showHeat) {
         showHeat ? map.addLayer(accidentHeatLayer) : map.removeLayer(accidentHeatLayer);
+    }
+    if (showHeat && accidentHeatLayer && map.hasLayer(accidentHeatLayer)) {
+        const heatCanvas = accidentHeatLayer._canvas;
+        const heatPane = map.getPane('heatPane');
+        if (heatCanvas && heatPane && heatCanvas.parentElement !== heatPane) heatPane.appendChild(heatCanvas);
+        accidentHeatLayer.redraw();
     }
 }
 
