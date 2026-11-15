@@ -1,155 +1,102 @@
 # Painel de Acidentes em Rodovias Federais
 
-Dashboard interativo sobre acidentes registrados em rodovias federais brasileiras entre 2017 e 2024. O projeto combina uma interface web, uma API Flask executada em Cloudflare Workers e arquivos JSON pré-processados.
+O Painel de Acidentes em Rodovias Federais é um dashboard interativo para explorar registros de acidentes nas rodovias federais brasileiras entre 2017 e 2024.
 
-## O que o dashboard mostra
+**[Acessar o dashboard](https://dashboard-acidentes-prf.guisoaresg7.workers.dev/)**
 
-- Indicadores de acidentes, mortes e feridos.
-- Evolução anual, acidentes por horário, severidade, ranking por estado e principais causas.
-- Filtros gerais por ano e estado.
-- Mapa vetorial próprio, sem tiles de mapas externos, com contorno do Brasil, limites estaduais e traçados das rodovias federais.
-- Seleção de BR pelo seletor ou clicando em um traçado. A rodovia escolhida fica destacada e o mapa mostra os acidentes correspondentes.
-- Visualização das ocorrências como **Pontos**, **Calor** ou **Ocultar**. Os filtros de ano e estado também reduzem os pontos do mapa.
+## Visão geral
 
-O filtro de BR afeta o mapa. Os outros indicadores continuam agregados pelos filtros de ano e estado.
+O painel reúne indicadores e gráficos para observar a frequência e a gravidade dos acidentes. Os dados podem ser analisados por ano e por estado (UF), usando os filtros no próprio dashboard.
 
-## Como os dados chegam ao site
+Entre as informações apresentadas estão:
+
+- totais de acidentes, mortes e feridos;
+- evolução anual de acidentes e mortes;
+- taxa de severidade;
+- distribuição de acidentes por horário;
+- principais causas registradas;
+- comparação e ranking entre estados;
+- tabela detalhada dos registros disponíveis no recorte selecionado.
+
+Os filtros de ano e estado atualizam os indicadores, gráficos, tabela e dados de ocorrências do mapa. A seleção de uma rodovia federal (BR) é específica do mapa: ela destaca a rodovia escolhida e exibe as ocorrências associadas, sem alterar os demais indicadores do painel.
+
+## Mapa interativo
+
+O mapa é desenhado com geometrias vetoriais próprias do Brasil, dos estados e das rodovias federais. Assim, os limites e os traçados não dependem de um mapa-base externo.
+
+É possível selecionar uma BR pelo menu ou clicando diretamente em seu traçado. Quando uma rodovia é selecionada, ela ganha destaque e as demais ficam apagadas para facilitar a leitura. Os controles de zoom permitem aproximar e afastar a visualização.
+
+O controle **Acidentes** oferece três modos:
+
+- **Pontos:** mostra ocorrências individualmente no mapa;
+- **Calor:** representa a concentração espacial dos acidentes;
+- **Ocultar:** esconde as ocorrências e mantém a visualização geográfica e rodoviária.
+
+O recorte do mapa acompanha os filtros de ano e estado. Para manter a navegação responsiva, a visualização pode exibir uma amostra limitada de ocorrências; o painel informa o total correspondente ao recorte quando uma BR é selecionada.
+
+## Como o dashboard funciona
+
+Os dados de acidentes e as geometrias geográficas são preparados antes de serem publicados. Essa etapa transforma as fontes em arquivos JSON e GeoJSON menores e organizados por finalidade, como resumos, mapas, tabelas, limites estaduais e trechos rodoviários.
+
+No site, a interface carrega os arquivos estáticos e solicita à API os dados correspondentes aos filtros selecionados. A API valida o ano e a UF, localiza o arquivo preparado para aquela combinação e devolve a resposta em JSON. Os resumos são mantidos em cache durante a execução do Worker para evitar leituras repetidas.
+
+Esse fluxo permite que o site apresente as informações sem processar o CSV bruto a cada acesso:
 
 ```mermaid
 flowchart LR
-    CSV[CSV de acidentes PRF] --> BUILD[tools/build_data.py]
-    DNIT[Geometrias rodoviárias DNIT] --> BUILD
-    IBGE[Limites geográficos IBGE] --> BUILD
-    BUILD --> ASSETS[public/data/*.json e GeoJSON]
-    ASSETS --> WORKER[Cloudflare Worker / API Flask]
-    ASSETS --> FRONTEND[Interface em public/]
-    WORKER --> FRONTEND
+    FONTES[Dados de acidentes e geometrias] --> PREP[Arquivos JSON e GeoJSON preparados]
+    PREP --> API[API no Cloudflare Worker]
+    PREP --> SITE[Interface do dashboard]
+    API --> SITE
+    SITE --> VIS[Indicadores, gráficos, tabela e mapa]
 ```
 
-O CSV é processado localmente com Pandas. O gerador cria resumos para 252 combinações de ano e estado, arquivos de mapa e tabela, geometrias vetoriais e listas de acidentes por BR. Isso evita carregar o CSV bruto dentro do Worker.
+## Dados em JSON
 
-O Worker serve a interface estática e responde às rotas `/api/*`. Os endpoints leem os arquivos gerados pelo vínculo `ASSETS`; o resumo é mantido em cache durante a execução do Worker. O Wrangler está configurado para encaminhar apenas `/api/*` ao Worker e servir os outros arquivos estáticos diretamente.
+Os arquivos JSON são respostas já organizadas para o dashboard. Em vez de enviar a base completa para o navegador, o site solicita somente o conjunto de dados necessário para a visualização e os filtros atuais.
 
-## Estrutura do projeto
+- **Resumo:** agrega indicadores e séries para o painel, incluindo combinações de ano e UF.
+- **Mapas:** contém ocorrências geolocalizadas para o mapa geral e para recortes filtrados.
+- **Tabelas:** contém linhas detalhadas de acidentes para preencher a tabela de registros.
+- **Geometrias:** arquivos GeoJSON descrevem limites do Brasil e estados, além dos trechos de rodovias.
+- **Acidentes por BR:** arquivos separados permitem consultar e desenhar ocorrências associadas a cada rodovia.
 
-```text
-Dashboard_acidentes/
-├── src/worker.py             # Worker Python, API Flask e rotas /api/*
-├── tools/build_data.py       # Processa o CSV e busca as geometrias públicas
-├── templates/index.html      # HTML de origem da interface
-├── static/script.js          # Gráficos, filtros e lógica do mapa
-├── static/style.css          # Estilos e comportamento responsivo
-├── public/index.html         # HTML servido no deploy
-├── public/static/            # Cópias dos arquivos de frontend para o deploy
-├── public/data/              # JSONs e GeoJSON usados pelo site
-├── requirements-data.txt     # Dependências locais de pré-processamento
-├── pyproject.toml            # Dependências do Worker/PyWrangler
-└── wrangler.jsonc            # Configuração do Cloudflare Workers
-```
+Os arquivos disponibilizados em `public/data/` são recursos públicos, usados pelo site para montar as visualizações. Eles não devem conter informações privadas.
 
-As versões em `public/` são os arquivos publicados. Ao alterar a interface, mantenha `templates/index.html` com `public/index.html`, e `static/script.js` e `static/style.css` sincronizados com as cópias em `public/static/`.
+## API do dashboard
 
-## Requisitos
+As rotas `/api/*` fornecem os dados consumidos pela interface. As rotas de resumo aceitam os parâmetros opcionais `ano` e `uf`.
 
-- Python 3.12 ou superior.
-- [`uv`](https://docs.astral.sh/uv/).
-- Node.js/npm para o Wrangler/PyWrangler.
-- Acesso à internet para baixar as geometrias durante a geração dos dados.
-- Para baixar automaticamente o CSV, credenciais Kaggle configuradas. Como alternativa, baixe o CSV antes e informe o caminho.
-
-## Gerar ou atualizar os dados
-
-Instale as dependências de pré-processamento:
-
-```bash
-python -m pip install -r requirements-data.txt
-```
-
-Com o CSV baixado manualmente:
-
-```bash
-python tools/build_data.py --csv "caminho/para/datatran2017-2024.csv"
-```
-
-Com credenciais Kaggle:
-
-```bash
-python tools/build_data.py
-```
-
-O comando cria ou atualiza:
-
-- `public/data/summary.json`: agregações usadas pelos indicadores e gráficos.
-- `public/data/maps/`: ocorrências usadas no mapa geral, por ano e por estado.
-- `public/data/tables/`: linhas para a tabela detalhada.
-- `public/data/roads/all.geojson`: trechos de rodovias federais.
-- `public/data/roads/brazil.geojson` e `states.geojson`: limites do Brasil e das UFs.
-- `public/data/roads/accidents/`: pontos geolocalizados por BR.
-- Manifestos com as BRs e trechos disponíveis.
-
-Por padrão, o mapa geral usa uma amostra de até 2.000 ocorrências e as combinações filtradas usam até 500. Quando uma BR é escolhida, o mapa processa seus registros e exibe até 2.500 pontos para continuar responsivo; o total do recorte aparece ao lado dos controles.
-
-Para não atualizar os trajetos e limites oficiais em uma execução, use `--skip-roads`. As geometrias existentes em `public/data/roads/` precisam estar presentes para o mapa vetorial continuar funcionando.
-
-Depois da geração, versione os arquivos alterados em `public/data/`. O CSV bruto está listado no `.gitignore` e não deve ser enviado ao repositório.
-
-## Rodar localmente
-
-Na raiz do projeto:
-
-```bash
-uv sync
-uv run pywrangler dev
-```
-
-Abra o endereço local apresentado pelo Wrangler, normalmente `http://localhost:8787`.
-
-## Publicar no Cloudflare Workers
-
-Com a conta Cloudflare autenticada:
-
-```bash
-uv run pywrangler deploy
-```
-
-O primeiro deploy pode pedir autorização e habilitar o subdomínio `workers.dev`. O nome inicial configurado em `wrangler.jsonc` é `dashboard-acidentes-prf`; se estiver ocupado, altere o campo `name`.
-
-Se o repositório estiver conectado ao Cloudflare Git integration na branch `main`, um push pode iniciar o deploy automaticamente.
-
-## API
-
-As rotas de resumo aceitam os filtros opcionais `ano` e `uf`, por exemplo `/api/stats_gerais?ano=2023&uf=SP`.
-
-| Rota | Conteúdo |
+| Rota | Dados fornecidos |
 |---|---|
-| `/api/stats_gerais` | Total de acidentes, mortos e feridos |
+| `/api/stats_gerais` | Totais de acidentes, mortes e feridos |
 | `/api/acidentes_por_ano` | Série anual de acidentes |
 | `/api/mortos_por_ano` | Série anual de mortes |
-| `/api/taxa_severidade` | Taxa de severidade e comparação anual |
-| `/api/heatmap_horarios` | Acidentes e severidade por hora |
-| `/api/ranking_estados` | Ranking de UFs por severidade |
-| `/api/causas` | Principais causas de acidentes |
+| `/api/taxa_severidade` | Indicadores de severidade |
+| `/api/heatmap_horarios` | Distribuição por horário |
+| `/api/ranking_estados` | Ranking das UFs |
+| `/api/causas` | Principais causas registradas |
 | `/api/estados` | Totais por UF |
-| `/api/mapa` | Ocorrências do mapa geral ou filtrado |
-| `/api/tabela_detalhada` | Linhas da tabela detalhada |
+| `/api/mapa` | Ocorrências para o mapa |
+| `/api/tabela_detalhada` | Linhas para a tabela detalhada |
 
-Ano válido: 2017–2024. UF válida: sigla de um estado brasileiro. Filtros desconhecidos retornam HTTP 400.
+O período coberto é de 2017 a 2024. Uma UF deve ser informada pela sigla oficial, como `SP` ou `BA`.
 
-## Fontes e disponibilidade dos dados
+## Fontes dos dados
 
-- Acidentes: dataset [`guilherme2008/acidentes-em-rodovias-federais`](https://www.kaggle.com/datasets/guilherme2008/acidentes-em-rodovias-federais), baseado nos registros da PRF.
-- Rodovias: [DNIT/Infra S.A. — Rodovias Federais, SNV 202501A](https://geo.infrasa.gov.br/server/rest/services/Hosted/Rodovias_Federais/FeatureServer/0).
-- Brasil e UFs: [IBGE — API de Malhas Geográficas](https://servicodados.ibge.gov.br/api/docs/malhas?versao=3).
-
-Os arquivos em `public/data/` são ativos públicos do site e também ficam visíveis no repositório público do GitHub. Não coloque informações privadas nesses arquivos. O CSV bruto não é enviado ao Git.
+- **Acidentes:** dataset [Acidentes em Rodovias Federais](https://www.kaggle.com/datasets/guilherme2008/acidentes-em-rodovias-federais), baseado em registros da PRF.
+- **Rodovias:** [DNIT/Infra S.A. — Rodovias Federais, SNV 202501A](https://geo.infrasa.gov.br/server/rest/services/Hosted/Rodovias_Federais/FeatureServer/0).
+- **Limites do Brasil e das UFs:** [IBGE — API de Malhas Geográficas](https://servicodados.ibge.gov.br/api/docs/malhas?versao=3).
 
 ## Tecnologias
 
-- Python, Flask e Cloudflare Python Workers.
-- PyWrangler/Wrangler e Workers Static Assets.
-- Pandas e KaggleHub para a preparação local dos dados.
-- Chart.js, Leaflet e Leaflet.heat no navegador.
+O projeto usa Python, Flask e Cloudflare Workers na API; Workers Static Assets para servir a interface e os dados preparados; e JavaScript, Chart.js e Leaflet para os gráficos e as interações do navegador.
+
+## Código-fonte
+
+O código do projeto está disponível no [GitHub](https://github.com/guig7/Dashboard_acidentes).
 
 ## Licença
 
-MIT. Consulte [License](License).
+Este projeto está sob a licença MIT. Consulte o arquivo [License](License).
+
