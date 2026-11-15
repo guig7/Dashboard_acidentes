@@ -92,6 +92,12 @@ O período coberto é de 2017 a 2024. Uma UF deve ser informada pela sigla ofici
 
 O projeto usa Python, Flask e Cloudflare Workers na API; Workers Static Assets para servir a interface e os dados preparados; e JavaScript, Chart.js e Leaflet para os gráficos e as interações do navegador.
 
+## Processo de desenvolvimento e uso de IA
+
+O desenvolvimento combinou decisões e iterações do autor com o uso do **ChatGPT (modelo GPT-6, acessado pelo Codex)** como ferramenta de apoio. A IA auxiliou na implementação de funcionalidades, investigação de problemas, ajustes de responsividade e documentação.
+
+O autor conduziu a evolução do produto: definiu os objetivos e prioridades, avaliou as sugestões, escolheu os comportamentos do mapa e dos filtros, e refinou a experiência a partir dos resultados observados. Esse processo demonstra aplicação prática de análise de requisitos, integração de dados, desenvolvimento web e avaliação iterativa de soluções com IA.
+
 ## Código-fonte
 
 O código do projeto está disponível no [GitHub](https://github.com/guig7/Dashboard_acidentes).
