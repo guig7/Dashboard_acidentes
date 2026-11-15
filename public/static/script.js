@@ -31,11 +31,16 @@ let roadGeometries      = new Map();
 let roadAccidents       = new Map();
 let availableRoads      = new Set();
 let mapLoadSequence     = 0;
+const UF_IBGE_CODES = {
+    AC: '12', AL: '27', AP: '16', AM: '13', BA: '29', CE: '23', DF: '53', ES: '32', GO: '52',
+    MA: '21', MT: '51', MS: '50', MG: '31', PA: '15', PB: '25', PR: '41', PE: '26', PI: '22',
+    RJ: '33', RN: '24', RS: '43', RO: '11', RR: '14', SC: '42', SP: '35', SE: '28', TO: '17'
+};
 
 // ─── URL HELPERS ──────────────────────────────────────────────────────────────
-function getUrlComFiltros(basePath) {
-    const ano = document.getElementById('filter-ano').value;
-    const uf  = document.getElementById('filter-uf').value;
+function getUrlComFiltros(basePath, filters = null) {
+    const ano = filters?.ano ?? document.getElementById('filter-ano').value;
+    const uf  = filters?.uf ?? document.getElementById('filter-uf').value;
     const params = new URLSearchParams();
     if (ano) params.append('ano', ano);
     if (uf)  params.append('uf', uf);
@@ -371,9 +376,19 @@ async function carregarListaRodovias() {
 }
 
 async function carregarMapa() {
+    const sequence = ++mapLoadSequence;
+    const filters = {
+        ano: document.getElementById('filter-ano').value,
+        uf: document.getElementById('filter-uf').value,
+        br: document.getElementById('filter-br').value
+    };
+    const status = document.getElementById('map-status');
+    status.textContent = 'Atualizando o mapa com os filtros selecionados…';
+    if (accidentPointsLayer) accidentPointsLayer.clearLayers();
+    if (accidentHeatLayer) accidentHeatLayer.setLatLngs([]);
+
     try {
-        const sequence = ++mapLoadSequence;
-        const selectedBr = document.getElementById('filter-br').value;
+        const selectedBr = filters.br;
         let registros;
 
         if (selectedBr) {
@@ -384,23 +399,27 @@ async function carregarMapa() {
                 carregarJsonEmCache(roadGeometries, 'states', '/data/roads/states.geojson')
             ]);
             if (sequence !== mapLoadSequence) return;
-            const [ano, uf] = [document.getElementById('filter-ano').value, document.getElementById('filter-uf').value];
-            registros = rows.filter(row => (!ano || String(row[11]) === ano) && (!uf || row[2] === uf))
+            if (!Array.isArray(rows)) throw new Error(`Os dados de acidentes da BR-${selectedBr} estão em formato inválido.`);
+            registros = rows.filter(row => (!filters.ano || String(row[11]) === filters.ano) && (!filters.uf || row[2] === filters.uf))
                 .map(row => ({ latitude: row[0], longitude: row[1], uf: row[2], municipio: row[3], data: row[4], horario: row[5], causa_acidente: row[6], classificacao_acidente: row[7], mortos: row[8], feridos: row[9], km: row[10], ano: row[11] }));
-            document.getElementById('map-status').textContent = `BR-${selectedBr}: ${formatNum(registros.length)} acidentes no recorte atual${registros.length > 2500 ? ' (até 2.500 pontos exibidos)' : ''}. O filtro BR afeta o mapa.`;
+            status.textContent = `BR-${selectedBr}: ${formatNum(registros.length)} acidentes no recorte atual${registros.length > 2500 ? ' (até 2.500 pontos exibidos)' : ''}. O filtro BR afeta o mapa.`;
             window.selectedRoadGeometry = { geometry, br: selectedBr };
             window.brazilBoundary = boundary;
             window.brazilStates = states;
         } else {
             const [res, geometry, boundary, states] = await Promise.all([
-                fetch(getUrlComFiltros('/api/mapa')),
+                fetch(getUrlComFiltros('/api/mapa', filters)),
                 carregarJsonEmCache(roadGeometries, 'all', '/data/roads/all.geojson').catch(() => null),
                 carregarJsonEmCache(roadGeometries, 'brazil', '/data/roads/brazil.geojson').catch(() => null),
                 carregarJsonEmCache(roadGeometries, 'states', '/data/roads/states.geojson').catch(() => null)
             ]);
+            if (!res.ok) throw new Error(`A API do mapa respondeu com status ${res.status}.`);
             registros = await res.json();
+            if (!Array.isArray(registros)) throw new Error('A resposta da API do mapa está em formato inválido.');
             if (sequence !== mapLoadSequence) return;
-            document.getElementById('map-status').textContent = 'Clique em uma BR no mapa ou escolha uma rodovia no seletor.';
+            status.textContent = filters.uf
+                ? `Mapa filtrado para ${filters.uf}${filters.ano ? ` · ${filters.ano}` : ''}. Clique em uma BR ou escolha uma rodovia no seletor.`
+                : `Mapa filtrado${filters.ano ? ` para ${filters.ano}` : ''}. Clique em uma BR ou escolha uma rodovia no seletor.`;
             window.selectedRoadGeometry = geometry ? { geometry, br: '' } : null;
             window.brazilBoundary = boundary;
             window.brazilStates = states;
@@ -458,7 +477,7 @@ async function carregarMapa() {
         if (window.brazilBoundary && window.brazilStates) mostrarMapaBrasil(window.brazilBoundary, window.brazilStates);
 
         if (window.selectedRoadGeometry) {
-            mostrarGeometriaRodovia(window.selectedRoadGeometry.geometry, selectedBr, document.getElementById('filter-uf').value);
+            mostrarGeometriaRodovia(window.selectedRoadGeometry.geometry, selectedBr, filters.uf);
         } else if (roadLayer) {
             map.removeLayer(roadLayer);
             roadLayer = null;
@@ -467,6 +486,7 @@ async function carregarMapa() {
         }
 
         if (sequence !== mapLoadSequence) return;
+        if (!selectedBr) ajustarEnquadramentoMapa(filters.uf);
         const fullCount = registros.length;
         if (fullCount > 2500) {
             // Stable sampling keeps the map responsive while retaining broad geographic coverage.
@@ -536,7 +556,31 @@ async function carregarMapa() {
         if (accidentHeatLayer) accidentHeatLayer.setLatLngs(heatPoints);
         setAccidentMode(accidentMode);
 
-    } catch(e) { console.error('Mapa:', e); }
+    } catch(e) {
+        if (sequence !== mapLoadSequence) return;
+        if (accidentPointsLayer) accidentPointsLayer.clearLayers();
+        if (accidentHeatLayer) accidentHeatLayer.setLatLngs([]);
+        status.textContent = 'Não foi possível atualizar o mapa. Tente alterar o filtro novamente.';
+        console.error('Mapa:', e);
+    }
+}
+
+function ajustarEnquadramentoMapa(uf) {
+    if (!map) return;
+    if (uf && stateLayer) {
+        const code = UF_IBGE_CODES[uf];
+        const bounds = L.latLngBounds();
+        stateLayer.eachLayer(layer => {
+            const feature = layer.feature || {};
+            const stateCode = String(feature.properties?.codarea ?? feature.id ?? '').padStart(2, '0');
+            if (stateCode === code) bounds.extend(layer.getBounds());
+        });
+        if (bounds.isValid()) {
+            map.fitBounds(bounds, { padding: [28, 28], maxZoom: 6 });
+            return;
+        }
+    }
+    if (countryLayer) map.fitBounds(countryLayer.getBounds(), { padding: [18, 18] });
 }
 
 async function carregarJsonEmCache(cache, br, url) {
@@ -671,3 +715,4 @@ function animateValue(id, start, end, duration) {
         obj.innerHTML = formatNum(current);
     }, 16);
 }
+
