@@ -31,6 +31,8 @@ let roadGeometries      = new Map();
 let roadAccidents       = new Map();
 let availableRoads      = new Set();
 let mapLoadSequence     = 0;
+let filterReloadTimer   = null;
+let renderedMapFilterState = null;
 const UF_IBGE_CODES = {
     AC: '12', AL: '27', AP: '16', AM: '13', BA: '29', CE: '23', DF: '53', ES: '32', GO: '52',
     MA: '21', MT: '51', MS: '50', MG: '31', PA: '15', PB: '25', PR: '41', PE: '26', PI: '22',
@@ -60,10 +62,15 @@ function carregarTudo() {
     carregarMapa();
 }
 
+function agendarAtualizacaoFiltros() {
+    clearTimeout(filterReloadTimer);
+    filterReloadTimer = setTimeout(carregarTudo, 180);
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     setTimeout(carregarTudo, 120);
-    document.getElementById('filter-ano').addEventListener('change', carregarTudo);
-    document.getElementById('filter-uf').addEventListener('change', carregarTudo);
+    document.getElementById('filter-ano').addEventListener('change', agendarAtualizacaoFiltros);
+    document.getElementById('filter-uf').addEventListener('change', agendarAtualizacaoFiltros);
     document.getElementById('filter-br').addEventListener('change', carregarMapa);
     document.querySelectorAll('[data-map-mode]').forEach(button => {
         button.addEventListener('click', () => setAccidentMode(button.dataset.mapMode));
@@ -383,9 +390,18 @@ async function carregarMapa() {
         br: document.getElementById('filter-br').value
     };
     const status = document.getElementById('map-status');
+    const roadFilterChanged = !renderedMapFilterState
+        || renderedMapFilterState.uf !== filters.uf
+        || renderedMapFilterState.br !== filters.br;
     status.textContent = 'Atualizando o mapa com os filtros selecionados…';
     if (accidentPointsLayer) accidentPointsLayer.clearLayers();
     if (accidentHeatLayer) accidentHeatLayer.setLatLngs([]);
+    if (roadFilterChanged) {
+        if (roadLayer && map?.hasLayer(roadLayer)) map.removeLayer(roadLayer);
+        if (roadGlowLayer && map?.hasLayer(roadGlowLayer)) map.removeLayer(roadGlowLayer);
+        roadLayer = null;
+        roadGlowLayer = null;
+    }
 
     try {
         const selectedBr = filters.br;
@@ -407,14 +423,13 @@ async function carregarMapa() {
             window.brazilBoundary = boundary;
             window.brazilStates = states;
         } else {
-            const [res, geometry, boundary, states] = await Promise.all([
-                fetch(getUrlComFiltros('/api/mapa', filters)),
+            const [mapRows, geometry, boundary, states] = await Promise.all([
+                fetchJsonComTimeout(getUrlComFiltros('/api/mapa', filters)),
                 carregarJsonEmCache(roadGeometries, 'all', '/data/roads/all.geojson').catch(() => null),
                 carregarJsonEmCache(roadGeometries, 'brazil', '/data/roads/brazil.geojson').catch(() => null),
                 carregarJsonEmCache(roadGeometries, 'states', '/data/roads/states.geojson').catch(() => null)
             ]);
-            if (!res.ok) throw new Error(`A API do mapa respondeu com status ${res.status}.`);
-            registros = await res.json();
+            registros = mapRows;
             if (!Array.isArray(registros)) throw new Error('A resposta da API do mapa está em formato inválido.');
             if (sequence !== mapLoadSequence) return;
             status.textContent = filters.uf
@@ -486,6 +501,7 @@ async function carregarMapa() {
         }
 
         if (sequence !== mapLoadSequence) return;
+        renderedMapFilterState = { uf: filters.uf, br: filters.br };
         if (!selectedBr) ajustarEnquadramentoMapa(filters.uf);
         const fullCount = registros.length;
         if (fullCount > 2500) {
@@ -585,11 +601,27 @@ function ajustarEnquadramentoMapa(uf) {
 
 async function carregarJsonEmCache(cache, br, url) {
     if (!cache.has(br)) {
-        const response = await fetch(url);
-        if (!response.ok) throw new Error(`Falha ao carregar ${url}`);
-        cache.set(br, await response.json());
+        cache.set(br, fetchJsonComTimeout(url, 30000));
     }
-    return cache.get(br);
+    const pending = cache.get(br);
+    try {
+        return await pending;
+    } catch (error) {
+        if (cache.get(br) === pending) cache.delete(br);
+        throw error;
+    }
+}
+
+async function fetchJsonComTimeout(url, timeoutMs = 20000) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+        const response = await fetch(url, { signal: controller.signal });
+        if (!response.ok) throw new Error(`Falha ao carregar ${url} (${response.status})`);
+        return await response.json();
+    } finally {
+        clearTimeout(timeout);
+    }
 }
 
 function calcularRaioPonto(hasDeaths) {
