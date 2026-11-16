@@ -6,6 +6,8 @@ from flask import Flask, Response, abort, jsonify, request
 from pyodide.ffi import run_sync
 from workers import wsgi
 
+from analyst_queries import QueryDataError, QueryValidationError, execute_query
+
 app = Flask(__name__)
 _summary_cache = None
 
@@ -94,6 +96,19 @@ def heatmap_horarios():
 @app.get("/api/ranking_estados")
 def ranking_estados():
     return summary_value("ranking_estados")
+
+
+@app.post("/api/analista/consulta")
+def consulta_analista():
+    if not request.is_json:
+        abort(400, description="Envie o corpo da consulta com Content-Type application/json.")
+    try:
+        result = execute_query(load_summaries(), request.get_json())
+    except QueryValidationError as error:
+        abort(400, description=str(error))
+    except QueryDataError as error:
+        abort(503, description=str(error))
+    return jsonify(result)
 
 
 @app.get("/api/mapa")

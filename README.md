@@ -79,6 +79,27 @@ As rotas `/api/*` fornecem os dados consumidos pela interface. As rotas de resum
 | `/api/estados` | Totais por UF |
 | `/api/mapa` | Ocorrências para o mapa |
 | `/api/tabela_detalhada` | Linhas para a tabela detalhada |
+| `POST /api/analista/consulta` | Consultas determinísticas para o analista de dados; não chama um modelo de IA |
+
+O endpoint de consulta recebe um objeto JSON com uma operação e seus parâmetros. Operações disponíveis:
+
+- `consultar_resumo`: `ano`, `uf` e `metrica` opcionais; métricas aceitas: `acidentes`, `mortes` e `feridos`.
+- `comparar_estados`: `ufs` (2 a 10 siglas), `metrica` e `ano` opcionais.
+- `listar_causas`: `ano`, `uf` e `limite` opcionais; o limite máximo é 10.
+- `consultar_serie`: `metrica` (`acidentes` ou `mortes`), `uf`, `ano_inicio` e `ano_fim` opcionais.
+
+Exemplo de comparação:
+
+```json
+{
+  "operacao": "comparar_estados",
+  "ano": 2023,
+  "ufs": ["GO", "SP"],
+  "metrica": "mortes"
+}
+```
+
+O endpoint valida a consulta e retorna os valores estruturados com filtros e fonte. Ele não interpreta linguagem natural; séries anuais de feridos ainda não estão nos dados preparados.
 
 O período coberto é de 2017 a 2024. Uma UF deve ser informada pela sigla oficial, como `SP` ou `BA`.
 
