@@ -1,6 +1,6 @@
 import unittest
 
-from analyst_queries import QueryDataError, QueryValidationError, execute_query
+from src.analyst_queries import QueryDataError, QueryValidationError, execute_query
 
 
 SUMMARIES = {
