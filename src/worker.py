@@ -231,7 +231,7 @@ def perguntar_analista():
     def infer(options):
         js_options = to_js(options, dict_converter=Object.fromEntries)
         response = run_sync(ai_binding.run(MODEL_ID, js_options))
-        return response.to_py()
+        return response
 
     try:
         result = analyze_question(
