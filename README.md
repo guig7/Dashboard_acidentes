@@ -127,6 +127,8 @@ O endpoint de linguagem natural recebe `{"pergunta":"Quantos acidentes foram reg
 
 Workers AI usa o binding `AI`, com o modelo `@cf/zai-org/glm-4.7-flash`. O recurso está habilitado em `wrangler.jsonc` (`ANALYST_AI_ENABLED: "true"`). A pergunta é limitada a 500 caracteres e a geração a 160 tokens. Não há integração com AI Gateway nem armazenamento próprio das perguntas.
 
+Workers Observability também está habilitado em `wrangler.jsonc`, com amostragem de 100%, para registrar invocações e exceções do Worker. O código não grava perguntas ou respostas em logs personalizados; os logs de invocação podem incluir metadados da requisição. A retenção e os limites dependem do plano da Cloudflare; consulte os [limites e preços de Workers Logs](https://developers.cloudflare.com/workers/observability/logs/workers-logs/).
+
 O dashboard exibe um formulário para perguntas e consulta `/api/analista/status` antes de habilitá-lo. Quando a IA, o binding ou o limitador de chamadas estiverem desativados ou ausentes, o formulário permanece desabilitado. A consulta em linguagem natural usa somente os filtros escritos na pergunta; os filtros gerais do dashboard não são aplicados.
 
 O [Workers AI oferece 10.000 Neurons gratuitos por dia](https://developers.cloudflare.com/workers-ai/platform/pricing/). Para `@cf/zai-org/glm-4.7-flash`, a tabela atual informa 5.500 Neurons por milhão de tokens de entrada e 36.400 por milhão de tokens de saída; os 160 tokens máximos de saída representam até 5,824 Neurons por resposta, além do custo de entrada. No Workers Paid, o excedente custa US$ 0,011 por 1.000 Neurons; no Workers Free, operações após a cota diária falham. Chamadas locais de inferência também consomem a cota.
