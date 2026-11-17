@@ -10,26 +10,54 @@ from analyst_queries import (
     METRICS,
     DistributionLoader,
     QueryDataError,
+    RecordAnalyzer,
     QueryValidationError,
     SOURCE,
     STATES,
     execute_query,
 )
+from data_schema import (
+    RECORD_FIELD_DESCRIPTIONS,
+    RECORD_FILTER_FIELDS,
+    RECORD_FLOAT_FIELDS,
+    RECORD_GROUPABLE_FIELDS,
+    RECORD_INTEGER_FIELDS,
+    RECORD_OUTPUT_FIELDS,
+)
+from record_queries import RecordDataError, RecordScopeError, RecordValidationError
 
 MODEL_ID = "@cf/zai-org/glm-4.7-flash"
 MAX_QUESTION_LENGTH = 500
 MAX_TOOL_CALLS = 5
+MAX_RECORD_TOOL_CALLS = 2
 MAX_PLAN_COMPLETION_TOKENS = 512
 MAX_ANSWER_COMPLETION_TOKENS = 700
 MAX_ANSWER_LENGTH = 2000
 
 _STATE_ENUM = sorted(STATES)
 _METRIC_ENUM = list(METRICS)
+_RECORD_FILTER_PROPERTIES = {}
+for _field in sorted(RECORD_FILTER_FIELDS):
+    if _field in RECORD_INTEGER_FIELDS:
+        _field_type = "integer"
+    elif _field in RECORD_FLOAT_FIELDS:
+        _field_type = "number"
+    else:
+        _field_type = "string"
+    _RECORD_FILTER_PROPERTIES[_field] = {
+        "type": _field_type,
+        "description": RECORD_FIELD_DESCRIPTIONS[_field],
+    }
+
 _REFUSAL_REASONS = {
     "fora_do_escopo": "Não consigo responder a essa pergunta com as consultas disponíveis no painel.",
     "previsao_futura": "O painel contém registros históricos e não permite prever acidentes futuros.",
     "sem_denominador_de_exposicao": "O painel não contém dados de exposição ao tráfego para calcular risco por veículo ou distância.",
     "dados_insuficientes": "Não encontrei dados suficientes no painel para responder a essa pergunta.",
+    "recorte_amplo": (
+        "Para consultar registros individuais, informe um ano ou uma UF; para recortes "
+        "maiores, especifique ambos."
+    ),
 }
 
 _TOOL_DEFINITIONS = [
@@ -120,6 +148,62 @@ _TOOL_DEFINITIONS = [
         },
     },
     {
+        "name": "analisar_registros",
+        "description": (
+            "Busca registros individuais e cruza vários filtros da base, ou agrupa os "
+            "registros por um campo. Informe ano ou UF para limitar a busca. Use esta "
+            "operação para perguntas que combinem condições, BR, município, causa, data, "
+            "horário ou quilômetro."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "ano": {"type": "integer", "minimum": 2017, "maximum": 2024},
+                "uf": {"type": "string", "enum": _STATE_ENUM},
+                "filtros": {
+                    "type": "object",
+                    "properties": _RECORD_FILTER_PROPERTIES,
+                    "additionalProperties": False,
+                    "description": (
+                        "Filtros exatos por coluna; textos ignoram diferenças de caixa e "
+                        "acentos. Para BR, informe apenas o número."
+                    ),
+                },
+                "data_inicio": {
+                    "type": "string",
+                    "pattern": r"^\d{2}/\d{2}/\d{4}$",
+                    "description": "Início inclusivo, no formato DD/MM/AAAA.",
+                },
+                "data_fim": {
+                    "type": "string",
+                    "pattern": r"^\d{2}/\d{2}/\d{4}$",
+                    "description": "Fim inclusivo, no formato DD/MM/AAAA.",
+                },
+                "km_min": {"type": "number", "minimum": 0},
+                "km_max": {"type": "number", "minimum": 0},
+                "agrupar_por": {
+                    "type": "string",
+                    "enum": sorted(RECORD_GROUPABLE_FIELDS),
+                    "description": "Campo usado para agrupar e comparar os resultados.",
+                },
+                "metrica": {
+                    "type": "string",
+                    "enum": sorted(DISTRIBUTION_METRICS),
+                },
+                "limite": {"type": "integer", "minimum": 1, "maximum": 10},
+                "campos": {
+                    "type": "array",
+                    "items": {
+                        "type": "string",
+                        "enum": sorted(RECORD_OUTPUT_FIELDS),
+                    },
+                    "minItems": 1,
+                    "maxItems": len(RECORD_OUTPUT_FIELDS),
+                },
+            },
+        },
+    },
+    {
         "name": "recusar_pergunta",
         "description": "Use quando a pergunta não puder ser respondida com os dados do painel.",
         "parameters": {
@@ -143,6 +227,10 @@ _TOOLS_BY_NAME = {
     tool["function"]["name"]: tool["function"]
     for tool in TOOLS
 }
+_RECORD_FIELD_GUIDE = "; ".join(
+    f"{field}: {description}"
+    for field, description in RECORD_FIELD_DESCRIPTIONS.items()
+)
 _SYSTEM_PROMPT = (
     "Você classifica perguntas sobre um painel de acidentes da PRF no Brasil, "
     "com dados de 2017 a 2024. Identifique todas as partes da pergunta e selecione "
@@ -158,9 +246,18 @@ _SYSTEM_PROMPT = (
     "Para pergunta composta como 'Qual estado teve mais acidentes em 2023 e qual a maior "
     "causa nesse período?', chame consultar_distribuicao para a UF e listar_causas com "
     "ano=2023 e limite=1. "
+    "Use analisar_registros quando a pergunta combinar filtros de campos ou pedir "
+    "detalhes de ocorrências. Para essa operação, informe ano ou UF, prefira ambos, "
+    "e use data_inicio/data_fim ou km_min/km_max para faixas. Use agrupar_por para "
+    "comparar vários valores dentro do recorte; sem agrupamento, selecione em campos "
+    "apenas as colunas úteis. Para perguntas gerais sem recorte, prefira as distribuições "
+    "já preparadas. Não tente consultar mais de dois conjuntos de registros por pergunta. "
+    "Campos da base: "
+    f"{_RECORD_FIELD_GUIDE}. "
     "Contagens históricas não demonstram causalidade nem justificam alertas operacionais. "
     "Use recusar_pergunta para previsões futuras, risco sem denominador de exposição, "
-    "ou perguntas sem suporte nos dados. Não misture recusar_pergunta com consultas. "
+    "ou perguntas sem suporte nos dados. Preserve rótulos textuais como registrados e "
+    "não tente adivinhar texto ilegível. Não misture recusar_pergunta com consultas. "
     "Não calcule nem escreva respostas."
 )
 _ANSWER_SYSTEM_PROMPT = (
@@ -173,7 +270,9 @@ _ANSWER_SYSTEM_PROMPT = (
     "afirmar causalidade. Contagens não são medidas de risco sem dados de exposição ao "
     "tráfego e não justificam alertas operacionais. Se algum ponto não estiver respondido "
     "pelos dados, diga isso claramente sem omitir os demais. Não mencione ferramentas ou "
-    "detalhes internos. Cite o recorte temporal, mas não cite a fonte na resposta; ela "
+    "detalhes internos. Quando o modo for amostra, diferencie o total encontrado das linhas "
+    "de exemplo; quando houver limite de categorias, não apresente a lista parcial como completa. "
+    "Cite o recorte temporal, mas não cite a fonte na resposta; ela "
     "fica disponível separadamente nos detalhes da consulta."
 )
 
@@ -242,6 +341,7 @@ def analyze_question(
     summaries: Mapping[str, object],
     infer: Callable[[dict[str, object]], object],
     distribution_loader: DistributionLoader | None = None,
+    record_analyzer: RecordAnalyzer | None = None,
 ) -> dict[str, object]:
     options = build_inference_options(question)
     tool_selections = _parse_tool_selections(infer(options))
@@ -266,17 +366,30 @@ def analyze_question(
                 summaries,
                 {"operacao": tool_name, **arguments},
                 distribution_loader=distribution_loader,
+                record_analyzer=record_analyzer,
             )
+        except RecordScopeError:
+            return _refusal("recorte_amplo")
+        except RecordValidationError:
+            return _refusal("dados_insuficientes")
+        except RecordDataError as error:
+            raise QueryDataError(str(error)) from error
         except QueryValidationError:
             return _refusal("dados_insuficientes")
         except QueryDataError:
             raise
 
-        consultations.append({
+        consultation = {
             "operacao": tool_name,
             "filtros": result["filtros"],
             "resultado": result["resultado"],
+        }
+        consultation.update({
+            key: value
+            for key, value in result.items()
+            if key not in {"operacao", "fonte", "filtros", "resultado"}
         })
+        consultations.append(consultation)
 
     answer_response = infer(build_answer_options(question, consultations))
     answer = _parse_answer_text(answer_response)
@@ -336,6 +449,10 @@ def _parse_tool_selections(
             arguments_value = raw_arguments
 
         selections.append((name, _as_mapping(arguments_value)))
+    if sum(name == "analisar_registros" for name, _ in selections) > MAX_RECORD_TOOL_CALLS:
+        raise AnalystAIError(
+            f"Workers AI selecionou mais de {MAX_RECORD_TOOL_CALLS} consultas detalhadas."
+        )
     return selections
 
 

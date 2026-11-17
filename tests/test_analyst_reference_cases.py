@@ -67,7 +67,15 @@ class AnalystReferenceCasesTests(unittest.TestCase):
         )
 
         self.assertEqual(manifest["total_registros"], 547347)
+        self.assertEqual(
+            sum(partition["quantidade"] for partition in manifest["particoes"] if partition["ano"] is None),
+            0,
+        )
         self.assertEqual(stats["total_acidentes"], manifest["total_registros"])
+        self.assertEqual(
+            sum(self.summaries["all"]["acidentes_por_ano"]["data"]),
+            manifest["total_registros"],
+        )
         self.assertEqual(analytics["total_registros"], manifest["total_registros"])
         self.assertEqual(sum(row["acidentes"] for row in weather), manifest["total_registros"])
         self.assertEqual(sum(row["mortos"] for row in weather), stats["total_mortos"])

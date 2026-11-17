@@ -10,6 +10,7 @@ import csv
 import gzip
 import json
 import math
+import re
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -41,6 +42,7 @@ CSV_COLUMNS = [
 ]
 RECORD_CHUNK_SIZE = 1000
 MAX_ASSET_BYTES = 20 * 1024 * 1024
+_SHORT_YEAR_DATE = re.compile(r"\d{1,2}/\d{1,2}/\d{2}\Z")
 
 
 def resolve_csv(csv_arg):
@@ -169,6 +171,35 @@ def normalize_br(value):
     return digits.zfill(3) if digits else ""
 
 
+def parse_accident_date(value):
+    if not isinstance(value, str) or not value.strip():
+        return None
+    text = value.strip()
+    date_format = "%m/%d/%y" if _SHORT_YEAR_DATE.fullmatch(text) else "%d/%m/%Y"
+    try:
+        return datetime.strptime(text, date_format)
+    except ValueError:
+        return None
+
+
+def parse_accident_dates(values):
+    text = values.astype("string").str.strip()
+    short_year = text.str.fullmatch(_SHORT_YEAR_DATE.pattern, na=False)
+    parsed = pd.Series(pd.NaT, index=values.index, dtype="datetime64[ns]")
+    parsed.loc[short_year] = pd.to_datetime(
+        text.loc[short_year],
+        format="%m/%d/%y",
+        errors="coerce",
+    )
+    long_year = ~short_year
+    parsed.loc[long_year] = pd.to_datetime(
+        text.loc[long_year],
+        format="%d/%m/%Y",
+        errors="coerce",
+    )
+    return parsed
+
+
 def _record_value(column, raw_value, row_number):
     value = (raw_value or "").strip()
     if not value:
@@ -212,10 +243,8 @@ def write_record_assets(csv_path, output_dir, chunk_size=RECORD_CHUNK_SIZE):
 
     def partition_for(row):
         date_text = (row.get("data_inversa") or "").strip()
-        try:
-            year = int(datetime.strptime(date_text, "%d/%m/%Y").year)
-        except ValueError:
-            year = None
+        parsed_date = parse_accident_date(date_text)
+        year = parsed_date.year if parsed_date is not None else None
         if year not in YEARS:
             year = None
 
@@ -472,7 +501,7 @@ def main():
             if column in use_columns and column not in {"hora"}
         },
     )
-    frame["data_inversa"] = pd.to_datetime(frame["data_inversa"], format="%d/%m/%Y", errors="coerce")
+    frame["data_inversa"] = parse_accident_dates(frame["data_inversa"])
     frame["ano"] = frame["data_inversa"].dt.year.fillna(0).astype(int)
     for column in (
         "pessoas", "mortos", "feridos_leves", "feridos_graves", "ilesos",

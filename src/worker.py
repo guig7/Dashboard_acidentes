@@ -19,6 +19,7 @@ from data_schema import ANALYTIC_DIMENSIONS
 from record_queries import (
     RecordDataError,
     RecordValidationError,
+    analyze_records,
     query_records,
 )
 
@@ -110,6 +111,14 @@ def load_record_chunk(path):
         raise RecordDataError("Bloco de registros inválido.") from error
 
 
+def analyze_prepared_records(query):
+    return analyze_records(
+        load_record_manifest(),
+        query,
+        load_record_chunk,
+    )
+
+
 def load_analytics_for_request():
     payload = {"operacao": "consultar_distribuicao"}
     for field in ("ano", "uf", "dimensao", "metrica", "pagina", "por_pagina"):
@@ -180,10 +189,11 @@ def consulta_analista():
             load_summaries(),
             request.get_json(),
             distribution_loader=load_analytics_dimension,
+            record_analyzer=analyze_prepared_records,
         )
-    except QueryValidationError as error:
+    except (QueryValidationError, RecordValidationError) as error:
         abort(400, description=str(error))
-    except QueryDataError as error:
+    except (QueryDataError, RecordDataError) as error:
         abort(503, description=str(error))
     return jsonify(result)
 
@@ -239,6 +249,7 @@ def perguntar_analista():
             load_summaries(),
             infer,
             distribution_loader=load_analytics_dimension,
+            record_analyzer=analyze_prepared_records,
         )
     except AnalystAIError as error:
         abort(502, description=str(error))

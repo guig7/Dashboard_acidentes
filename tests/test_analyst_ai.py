@@ -12,6 +12,7 @@ from analyst_ai import (
     MODEL_ID,
     MAX_ANSWER_COMPLETION_TOKENS,
     MAX_PLAN_COMPLETION_TOKENS,
+    MAX_RECORD_TOOL_CALLS,
     MAX_TOOL_CALLS,
     TOOLS,
     analyze_question,
@@ -21,6 +22,8 @@ from analyst_ai import (
     validate_question,
 )
 from analyst_queries import SOURCE
+from data_schema import RECORD_FILTER_FIELDS
+from record_queries import RecordScopeError
 
 
 FIXTURE_PATH = ROOT / "tests" / "fixtures" / "analyst_questions.json"
@@ -46,6 +49,14 @@ class AnalystAITests(unittest.TestCase):
         self.assertFalse(options["chat_template_kwargs"]["enable_thinking"])
         self.assertTrue(all(tool["type"] == "function" for tool in TOOLS))
         self.assertTrue(all("name" in tool["function"] for tool in TOOLS))
+        record_tool = next(
+            tool["function"] for tool in TOOLS
+            if tool["function"]["name"] == "analisar_registros"
+        )
+        self.assertEqual(
+            set(record_tool["parameters"]["properties"]["filtros"]["properties"]),
+            RECORD_FILTER_FIELDS,
+        )
 
     def test_answer_request_contains_only_question_and_structured_results(self):
         consultations = [{
@@ -142,8 +153,8 @@ class AnalystAITests(unittest.TestCase):
             }],
         }
         final_answer = (
-            "Em 2023, MG teve 3.536 acidentes. A causa registrada mais frequente foi "
-            "Reação tardia ou ineficiente do condutor, com 3.930 acidentes."
+            "Em 2023, MG teve 9.007 acidentes. A causa registrada mais frequente foi "
+            "Reação tardia ou ineficiente do condutor, com 9.855 acidentes."
         )
         inference_calls = []
 
@@ -155,12 +166,12 @@ class AnalystAITests(unittest.TestCase):
             self.assertEqual(context["pergunta"], question)
             self.assertEqual(len(context["consultas"]), 2)
             self.assertEqual(context["consultas"][0]["resultado"][0]["valor"], "MG")
-            self.assertEqual(context["consultas"][0]["resultado"][0]["acidentes"], 3536)
+            self.assertEqual(context["consultas"][0]["resultado"][0]["acidentes"], 9007)
             self.assertEqual(
                 context["consultas"][1]["resultado"][0]["causa"],
                 "Reação tardia ou ineficiente do condutor",
             )
-            self.assertEqual(context["consultas"][1]["resultado"][0]["acidentes"], 3930)
+            self.assertEqual(context["consultas"][1]["resultado"][0]["acidentes"], 9855)
             return {"choices": [{"message": {"content": final_answer}}]}
 
         result = analyze_question(
@@ -178,6 +189,124 @@ class AnalystAITests(unittest.TestCase):
         self.assertEqual(len(result["consultas"]), 2)
         self.assertEqual(result["consulta"][0]["operacao"], "consultar_distribuicao")
         self.assertEqual(result["consulta"][1]["operacao"], "listar_causas")
+
+    def test_record_analysis_tool_uses_filtered_structured_results(self):
+        question = "Qual causa teve mais acidentes com chuva na BR-116 em MG em 2023?"
+        arguments = {
+            "ano": 2023,
+            "uf": "MG",
+            "filtros": {
+                "br": "116",
+                "condicao_metereologica": "Chuva",
+            },
+            "agrupar_por": "causa_acidente",
+            "metrica": "acidentes",
+            "limite": 1,
+        }
+        record_result = {
+            "filtros": {"ano": 2023, "uf": "MG"},
+            "modo": "agrupamento",
+            "total_registros": 20,
+            "total_categorias": 4,
+            "resultado": [{
+                "valor": "Acúmulo de água",
+                "acidentes": 8,
+                "mortes": 1,
+                "feridos": 4,
+            }],
+        }
+        plan = {
+            "choices": [{
+                "message": {
+                    "tool_calls": [{
+                        "function": {
+                            "name": "analisar_registros",
+                            "arguments": json.dumps(arguments),
+                        },
+                    }],
+                },
+            }],
+        }
+
+        def infer(options):
+            if "tools" in options:
+                return plan
+            context = json.loads(options["messages"][1]["content"])
+            self.assertEqual(context["consultas"][0]["total_registros"], 20)
+            self.assertEqual(
+                context["consultas"][0]["resultado"][0]["valor"],
+                "Acúmulo de água",
+            )
+            return {
+                "choices": [{
+                    "message": {
+                        "content": "A causa registrada mais frequente foi Acúmulo de água.",
+                    },
+                }],
+            }
+
+        def record_analyzer(query):
+            self.assertEqual(query, {"operacao": "analisar_registros", **arguments})
+            return record_result
+
+        result = analyze_question(
+            question,
+            self.summaries,
+            infer,
+            record_analyzer=record_analyzer,
+        )
+
+        self.assertEqual(result["status"], "respondida")
+        self.assertEqual(result["consultas"][0]["total_registros"], 20)
+        self.assertIn("Acúmulo de água", result["resposta"])
+
+    def test_record_analysis_requests_narrower_scope_when_scan_is_too_large(self):
+        plan = {
+            "choices": [{
+                "message": {
+                    "tool_calls": [{
+                        "function": {
+                            "name": "analisar_registros",
+                            "arguments": '{"uf":"MG","agrupar_por":"br"}',
+                        },
+                    }],
+                },
+            }],
+        }
+
+        def too_broad(_query):
+            raise RecordScopeError("amplo")
+
+        result = analyze_question(
+            "Quais BRs tiveram mais acidentes em Minas Gerais?",
+            self.summaries,
+            lambda _options: plan,
+            record_analyzer=too_broad,
+        )
+
+        self.assertEqual(result["status"], "recusada")
+        self.assertEqual(result["motivo"], "recorte_amplo")
+        self.assertIn("informe um ano ou uma UF", result["resposta"])
+
+    def test_record_tool_call_count_is_bounded(self):
+        tool_call = {
+            "function": {
+                "name": "analisar_registros",
+                "arguments": '{"ano":2023}',
+            },
+        }
+        plan = {
+            "choices": [{
+                "message": {"tool_calls": [tool_call] * (MAX_RECORD_TOOL_CALLS + 1)},
+            }],
+        }
+
+        with self.assertRaises(AnalystAIError):
+            analyze_question(
+                "Pergunta",
+                self.summaries,
+                lambda _options: plan,
+            )
 
     def test_rejects_empty_and_overlong_questions(self):
         with self.assertRaises(ValueError):

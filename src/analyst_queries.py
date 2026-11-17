@@ -37,6 +37,7 @@ DISTRIBUTION_METRICS = {
 }
 SOURCE = "Dados PRF pré-processados do painel (2017–2024)."
 DistributionLoader = Callable[[int | None, str | None, str], object]
+RecordAnalyzer = Callable[[Mapping[str, object]], Mapping[str, object]]
 
 
 class QueryValidationError(ValueError):
@@ -51,6 +52,7 @@ def execute_query(
     summaries: Mapping[str, object],
     payload: object,
     distribution_loader: DistributionLoader | None = None,
+    record_analyzer: RecordAnalyzer | None = None,
 ) -> dict[str, object]:
     query = _as_mapping(payload, "A consulta deve ser um objeto JSON.")
     operation = query.get("operacao")
@@ -65,6 +67,17 @@ def execute_query(
     }
     if operation == "consultar_distribuicao":
         result = _consultar_distribuicao(query, distribution_loader)
+        return {
+            "operacao": operation,
+            "fonte": SOURCE,
+            **result,
+        }
+    if operation == "analisar_registros":
+        if record_analyzer is None:
+            raise QueryDataError("A consulta de registros não foi configurada.")
+        result = record_analyzer(query)
+        if not isinstance(result, Mapping):
+            raise QueryDataError("A consulta de registros retornou um resultado inválido.")
         return {
             "operacao": operation,
             "fonte": SOURCE,

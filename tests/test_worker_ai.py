@@ -10,6 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 SUMMARY_PATH = ROOT / "public" / "data" / "summary.json"
+RECORDS_DIR = ROOT / "public" / "data" / "records"
 
 
 class WorkerAITests(unittest.TestCase):
@@ -96,18 +97,19 @@ class WorkerAITests(unittest.TestCase):
             context = json.loads(options["messages"][1]["content"])
             self.assertEqual(len(context["consultas"]), 2)
             self.assertEqual(context["consultas"][0]["resultado"][0]["valor"], "MG")
-            self.assertEqual(context["consultas"][0]["resultado"][0]["acidentes"], 3536)
+            self.assertEqual(context["consultas"][0]["resultado"][0]["acidentes"], 9007)
             self.assertEqual(
                 context["consultas"][1]["resultado"][0]["causa"],
                 "Reação tardia ou ineficiente do condutor",
             )
+            self.assertEqual(context["consultas"][1]["resultado"][0]["acidentes"], 9855)
             return {
                 "choices": [{
                     "message": {
                         "content": (
-                            "Em 2023, MG teve 3.536 acidentes. A causa registrada mais "
+                            "Em 2023, MG teve 9.007 acidentes. A causa registrada mais "
                             "frequente foi Reação tardia ou ineficiente do condutor, "
-                            "com 3.930 acidentes."
+                            "com 9.855 acidentes."
                         ),
                     },
                 }],
@@ -161,10 +163,93 @@ class WorkerAITests(unittest.TestCase):
         self.assertEqual(payload["consulta"][1]["operacao"], "listar_causas")
         self.assertEqual(payload["resultado"][0][0]["valor"], "MG")
         self.assertEqual(payload["resultado"][1][0]["causa"], "Reação tardia ou ineficiente do condutor")
-        self.assertIn("MG teve 3.536 acidentes", payload["resposta"])
-        self.assertIn("3.930 acidentes", payload["resposta"])
+        self.assertIn("MG teve 9.007 acidentes", payload["resposta"])
+        self.assertIn("9.855 acidentes", payload["resposta"])
         self.assertNotIn("Fonte:", payload["resposta"])
         self.assertIn("Dados PRF pré-processados", payload["fonte"])
+        self.assertEqual(len(ai_calls), 2)
+
+    def test_ai_can_analyze_filtered_record_details(self):
+        plan = {
+            "choices": [{
+                "message": {
+                    "tool_calls": [{
+                        "function": {
+                            "name": "analisar_registros",
+                            "arguments": json.dumps({
+                                "ano": 2023,
+                                "uf": "MG",
+                                "filtros": {
+                                    "br": "116",
+                                    "condicao_metereologica": "Chuva",
+                                },
+                                "agrupar_por": "causa_acidente",
+                                "metrica": "acidentes",
+                                "limite": 1,
+                            }),
+                        },
+                    }],
+                },
+            }],
+        }
+        ai_calls = []
+
+        def run_ai(model, options):
+            self.assertEqual(model, self.worker.MODEL_ID)
+            ai_calls.append(options)
+            if "tools" in options:
+                return plan
+            context = json.loads(options["messages"][1]["content"])
+            consultation = context["consultas"][0]
+            self.assertEqual(consultation["total_registros"], 85)
+            self.assertEqual(consultation["resultado"][0]["acidentes"], 19)
+            category = consultation["resultado"][0]["valor"]
+            return {
+                "choices": [{
+                    "message": {
+                        "content": (
+                            f"Em 2023, foram encontrados 85 acidentes nesse recorte. "
+                            f"A causa registrada mais frequente foi {category}, com 19 registros."
+                        ),
+                    },
+                }],
+            }
+
+        env = types.SimpleNamespace(
+            ANALYST_AI_ENABLED="true",
+            AI=types.SimpleNamespace(run=run_ai),
+            ANALYST_RATE_LIMITER=types.SimpleNamespace(
+                limit=lambda options: types.SimpleNamespace(success=bool(options))
+            ),
+        )
+        summaries = json.loads(SUMMARY_PATH.read_text(encoding="utf-8"))
+        manifest = json.loads((RECORDS_DIR / "manifest.json").read_text(encoding="utf-8"))
+
+        def load_chunk(path):
+            return json.loads((RECORDS_DIR / path).read_text(encoding="utf-8"))
+
+        with (
+            patch.object(self.worker, "load_summaries", return_value=summaries),
+            patch.object(self.worker, "load_record_manifest", return_value=manifest),
+            patch.object(self.worker, "load_record_chunk", side_effect=load_chunk),
+        ):
+            response = self.worker.app.test_client().post(
+                "/api/analista/perguntar",
+                json={
+                    "pergunta": (
+                        "Qual causa teve mais acidentes com chuva na BR-116 "
+                        "em MG em 2023?"
+                    ),
+                },
+                environ_overrides={"workers.env": env},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertEqual(payload["status"], "respondida")
+        self.assertEqual(payload["consultas"][0]["operacao"], "analisar_registros")
+        self.assertEqual(payload["consultas"][0]["total_registros"], 85)
+        self.assertIn("causa registrada mais frequente", payload["resposta"])
         self.assertEqual(len(ai_calls), 2)
 
 

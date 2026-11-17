@@ -13,7 +13,7 @@
           "metrica": "acidentes"
         },
         "result": {
-          "acidentes": 25532
+          "acidentes": 64606
         }
       }
     },
@@ -32,15 +32,15 @@
         "result": [
           {
             "valor": "MG",
-            "acidentes": 3322,
-            "mortes": 306,
-            "feridos": 4209,
-            "feridos_leves": 3212,
-            "feridos_graves": 997,
-            "pessoas": 8675,
-            "ilesos": 3032,
-            "ignorados": 1406,
-            "veiculos": 6399
+            "acidentes": 8376,
+            "mortes": 717,
+            "feridos": 10433,
+            "feridos_leves": 8016,
+            "feridos_graves": 2417,
+            "pessoas": 21547,
+            "ilesos": 7432,
+            "ignorados": 3649,
+            "veiculos": 16189
           }
         ]
       }
@@ -57,8 +57,8 @@
           "metrica": "mortes"
         },
         "result": [
-          {"uf": "BA", "valor": 205},
-          {"uf": "PE", "valor": 107}
+          {"uf": "BA", "valor": 564},
+          {"uf": "PE", "valor": 278}
         ]
       }
     },
@@ -103,9 +103,9 @@
           "ano_fim": 2024
         },
         "result": [
-          {"ano": 2022, "valor": 1244},
-          {"ano": 2023, "valor": 1304},
-          {"ano": 2024, "valor": 1164}
+          {"ano": 2022, "valor": 3112},
+          {"ano": 2023, "valor": 3136},
+          {"ano": 2024, "valor": 2775}
         ]
       }
     },
@@ -121,7 +121,7 @@
           "metrica": "feridos"
         },
         "result": {
-          "feridos": 2020
+          "feridos": 5207
         }
       }
     },
@@ -135,15 +135,15 @@
           "ano": 2017
         },
         "result": {
-          "acidentes": 35266,
-          "mortes": 2515,
-          "feridos": 33287,
-          "feridos_leves": 25829,
-          "feridos_graves": 7458,
-          "pessoas": 85248,
-          "ilesos": 40085,
-          "ignorados": 12031,
-          "veiculos": 67562
+          "acidentes": 89567,
+          "mortes": 6248,
+          "feridos": 84319,
+          "feridos_leves": 65603,
+          "feridos_graves": 18716,
+          "pessoas": 217521,
+          "ilesos": 103307,
+          "ignorados": 30363,
+          "veiculos": 171250
         }
       }
     },

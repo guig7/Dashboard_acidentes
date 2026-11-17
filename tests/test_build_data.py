@@ -7,7 +7,11 @@ from pathlib import Path
 import pandas as pd
 
 from src.data_schema import ANALYTIC_DIMENSIONS, ANALYTIC_METRICS, RECORD_COLUMNS
-from tools.build_data import write_analytics, write_record_assets
+from tools.build_data import (
+    parse_accident_dates,
+    write_analytics,
+    write_record_assets,
+)
 
 
 def source_row(identifier, date, state, weather, deaths, injuries, coordinates=True):
@@ -78,6 +82,33 @@ class BuildDataTests(unittest.TestCase):
         self.assertEqual(len(first_shard["rows"][0]), 30)
         self.assertIsNone(second_shard["rows"][0][25])
         self.assertEqual(second_shard["rows"][0][13], "Céu claro")
+
+    def test_short_us_dates_and_long_dates_parse_consistently(self):
+        parsed = parse_accident_dates(pd.Series([
+            "1/23/17",
+            "23/01/2017",
+            "12/31/17",
+        ]))
+        self.assertEqual(
+            parsed.dt.strftime("%Y-%m-%d").tolist(),
+            ["2017-01-23", "2017-01-23", "2017-12-31"],
+        )
+
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            csv_path = root / "records.csv"
+            with csv_path.open("w", encoding="latin-1", newline="") as file:
+                writer = csv.DictWriter(file, fieldnames=RECORD_COLUMNS, delimiter=";")
+                writer.writeheader()
+                writer.writerow(source_row(1, "1/23/17", "AC", "Chuva", 0, 1))
+
+            manifest = write_record_assets(csv_path, root / "data")
+
+            self.assertEqual(manifest["particoes"][0]["ano"], 2017)
+            self.assertEqual(
+                manifest["particoes"][0]["caminho"],
+                "year_2017/uf_AC",
+            )
 
     def test_weather_analytics_aggregate_full_rows_and_metrics(self):
         input_rows = [

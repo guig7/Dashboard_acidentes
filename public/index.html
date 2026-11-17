@@ -109,15 +109,16 @@
             <section class="chart-container full-width analyst-container" aria-labelledby="analyst-title">
                 <h3 class="chart-title" id="analyst-title">Analista de dados</h3>
                 <p class="analyst-description">
-                    Pergunte sobre os registros históricos de 2017 a 2024, inclusive várias questões
-                    na mesma pergunta. Informe ano e UF quando relevante; os filtros gerais do painel
-                    não alteram esta consulta. O analista não prevê acidentes nem calcula risco sem
-                    dados de exposição ao tráfego.
+                    Pergunte sobre os registros históricos de 2017 a 2024 e combine campos como ano,
+                    UF, BR, município, causa, clima, data, horário ou km. Para detalhes de ocorrências,
+                    informe um ano ou UF; buscas muito amplas pedirão um recorte menor. Os filtros gerais
+                    do painel não alteram esta consulta. O analista não prevê acidentes nem calcula risco
+                    sem dados de exposição ao tráfego.
                 </p>
                 <form id="analyst-form" class="analyst-form">
                     <label class="analyst-label" for="analyst-question">Sua pergunta</label>
                     <textarea id="analyst-question" name="pergunta" maxlength="500" rows="3"
-                        placeholder="Ex.: Qual estado teve mais acidentes em 2023 e qual foi a causa registrada mais frequente?"
+                        placeholder="Ex.: Em MG, na BR-116, qual causa aparece mais nos acidentes com chuva em 2023?"
                         aria-describedby="analyst-char-count" disabled required></textarea>
                     <div class="analyst-form-footer">
                         <span id="analyst-char-count" class="analyst-char-count">0/500</span>
