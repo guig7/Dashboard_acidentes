@@ -4,7 +4,7 @@ import json
 
 from flask import Flask, Response, abort, jsonify, request
 from js import Object
-from pyodide.ffi import run_sync, to_js, to_py
+from pyodide.ffi import run_sync, to_js
 from workers import wsgi
 
 from analyst_ai import (
@@ -162,7 +162,7 @@ def perguntar_analista():
     def infer(options):
         js_options = to_js(options, dict_converter=Object.fromEntries)
         response = run_sync(ai_binding.run(MODEL_ID, js_options))
-        return to_py(response)
+        return response.to_py()
 
     try:
         result = analyze_question(question, load_summaries(), infer)
