@@ -63,20 +63,56 @@ class WorkerAITests(unittest.TestCase):
         model_response = {
             "choices": [{
                 "message": {
-                    "tool_calls": [{
-                        "function": {
-                            "name": "consultar_resumo",
-                            "arguments": '{"ano":2022,"metrica":"acidentes"}',
+                    "tool_calls": [
+                        {
+                            "function": {
+                                "name": "consultar_distribuicao",
+                                "arguments": json.dumps({
+                                    "ano": 2023,
+                                    "dimensao": "uf",
+                                    "metrica": "acidentes",
+                                    "por_pagina": 1,
+                                }),
+                            },
                         },
-                    }],
+                        {
+                            "function": {
+                                "name": "listar_causas",
+                                "arguments": json.dumps({"ano": 2023, "limite": 1}),
+                            },
+                        },
+                    ],
                 },
             }],
         }
+        ai_calls = []
 
         def run_ai(model, options):
             self.assertEqual(model, self.worker.MODEL_ID)
             self.assertIn("messages", options)
-            return model_response
+            ai_calls.append(options)
+            if "tools" in options:
+                return model_response
+            context = json.loads(options["messages"][1]["content"])
+            self.assertEqual(len(context["consultas"]), 2)
+            self.assertEqual(context["consultas"][0]["resultado"][0]["valor"], "MG")
+            self.assertEqual(context["consultas"][0]["resultado"][0]["acidentes"], 3536)
+            self.assertEqual(
+                context["consultas"][1]["resultado"][0]["causa"],
+                "Reação tardia ou ineficiente do condutor",
+            )
+            return {
+                "choices": [{
+                    "message": {
+                        "content": (
+                            "Em 2023, MG teve 3.536 acidentes. A causa registrada mais "
+                            "frequente foi Reação tardia ou ineficiente do condutor, "
+                            "com 3.930 acidentes. "
+                            "Fonte: Dados PRF pré-processados do painel (2017–2024)."
+                        ),
+                    },
+                }],
+            }
 
         ai_binding = types.SimpleNamespace(run=run_ai)
         rate_limiter = types.SimpleNamespace(
@@ -89,17 +125,46 @@ class WorkerAITests(unittest.TestCase):
         )
         summaries = json.loads(SUMMARY_PATH.read_text(encoding="utf-8"))
 
-        with patch.object(self.worker, "load_summaries", return_value=summaries):
+        def load_distribution(year, state, dimension):
+            parts = []
+            if year is not None:
+                parts.append(f"year_{year}")
+            if state is not None:
+                parts.append(f"uf_{state}")
+            key = "_".join(parts) or "all"
+            path = ROOT / "public" / "data" / "analytics" / f"{key}.json"
+            return json.loads(path.read_text(encoding="utf-8"))["dimensoes"][dimension]
+
+        with (
+            patch.object(self.worker, "load_summaries", return_value=summaries),
+            patch.object(
+                self.worker,
+                "load_analytics_dimension",
+                side_effect=load_distribution,
+            ),
+        ):
             response = self.worker.app.test_client().post(
                 "/api/analista/perguntar",
-                json={"pergunta": "Quantos acidentes houve em 2022?"},
+                json={
+                    "pergunta": (
+                        "Qual estado teve mais acidentes em 2023 e qual a maior causa "
+                        "nesse período?"
+                    ),
+                },
                 environ_overrides={"workers.env": env},
             )
 
         self.assertEqual(response.status_code, 200)
         payload = response.get_json()
         self.assertEqual(payload["status"], "respondida")
-        self.assertEqual(payload["resultado"], {"acidentes": 25532})
+        self.assertEqual(len(payload["consultas"]), 2)
+        self.assertEqual(payload["consulta"][0]["operacao"], "consultar_distribuicao")
+        self.assertEqual(payload["consulta"][1]["operacao"], "listar_causas")
+        self.assertEqual(payload["resultado"][0][0]["valor"], "MG")
+        self.assertEqual(payload["resultado"][1][0]["causa"], "Reação tardia ou ineficiente do condutor")
+        self.assertIn("MG teve 3.536 acidentes", payload["resposta"])
+        self.assertIn("3.930 acidentes", payload["resposta"])
+        self.assertEqual(len(ai_calls), 2)
 
 
 if __name__ == "__main__":

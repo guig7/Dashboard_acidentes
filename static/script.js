@@ -342,7 +342,7 @@ async function enviarPerguntaAnalista(event) {
     submit.disabled = true;
     question.disabled = true;
     responseContainer.hidden = true;
-    status.textContent = 'Consultando os dados...';
+    status.textContent = 'Analisando a pergunta e consultando os dados...';
     status.dataset.state = 'loading';
 
     try {
@@ -364,13 +364,12 @@ async function enviarPerguntaAnalista(event) {
         }
 
         answer.textContent = payload.resposta;
-        resultData.textContent = JSON.stringify({
-            consulta: payload.consulta,
-            resultado: payload.resultado,
-            fonte: payload.fonte,
-        }, null, 2);
+        const evidence = Array.isArray(payload.consultas)
+            ? { consultas: payload.consultas, fonte: payload.fonte }
+            : { consulta: payload.consulta, resultado: payload.resultado, fonte: payload.fonte };
+        resultData.textContent = JSON.stringify(evidence, null, 2);
         responseContainer.hidden = false;
-        status.textContent = 'Consulta concluída. Confira os dados e a fonte abaixo.';
+        status.textContent = 'Análise concluída. Confira as consultas, os dados e a fonte abaixo.';
         status.dataset.state = 'ready';
     } catch (error) {
         console.error('Falha ao consultar o analista de dados:', error);
