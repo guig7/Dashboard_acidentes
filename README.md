@@ -25,20 +25,7 @@ O seletor de BR é independente dos demais componentes: ele destaca o traçado e
 
 O CSV bruto é processado antes da publicação. O Worker não baixa nem percorre o CSV a cada acesso; ele consulta os arquivos preparados publicados como Static Assets. A interface obtém dados da API ou carrega diretamente os recursos públicos necessários ao mapa.
 
-```mermaid
-flowchart LR
-    PRF[Registros de acidentes] --> PREP[Pré-processamento]
-    DNIT[Geometrias de rodovias] --> PREP
-    IBGE[Limites geográficos] --> PREP
-    PREP --> ASSETS[JSON e GeoJSON em public/data]
-    ASSETS --> WORKER[Cloudflare Worker Python e Flask]
-    ASSETS --> UI[Interface estática]
-    UI --> API[Rotas /api]
-    API --> WORKER
-    WORKER --> AI[Workers AI, quando a pergunta é em linguagem natural]
-    WORKER --> UI
-    UI --> VIS[Indicadores, gráficos, tabelas e mapa]
-```
+![Fluxograma da arquitetura do Painel de Acidentes em Rodovias Federais](docs/fluxograma-sistema.svg)
 
 ### Componentes
 
