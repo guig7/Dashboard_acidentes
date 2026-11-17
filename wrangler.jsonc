@@ -18,7 +18,7 @@
     }
   ],
   "vars": {
-    "ANALYST_AI_ENABLED": "false"
+    "ANALYST_AI_ENABLED": "true"
   },
   "assets": {
     "directory": "./public/",
