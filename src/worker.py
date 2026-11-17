@@ -15,9 +15,16 @@ from analyst_ai import (
     validate_question,
 )
 from analyst_queries import QueryDataError, QueryValidationError, execute_query
+from data_schema import ANALYTIC_DIMENSIONS
+from record_queries import (
+    RecordDataError,
+    RecordValidationError,
+    query_records,
+)
 
 app = Flask(__name__)
 _summary_cache = None
+_record_manifest_cache = None
 
 YEARS = {str(year) for year in range(2017, 2025)}
 STATES = {
@@ -34,10 +41,14 @@ def filter_key():
         abort(400, description="Ano inválido. Use um ano entre 2017 e 2024.")
     if state and state not in STATES:
         abort(400, description="UF inválida.")
+    return filter_key_for(year or None, state or None)
+
+
+def filter_key_for(year, state):
     parts = []
-    if year:
+    if year is not None:
         parts.append(f"year_{year}")
-    if state:
+    if state is not None:
         parts.append(f"uf_{state}")
     return "_".join(parts) or "all"
 
@@ -56,6 +67,60 @@ def load_summaries():
             abort(503, description="Dados não encontrados. Gere-os com tools/build_data.py.")
         _summary_cache = json.loads(run_sync(response.text()))
     return _summary_cache
+
+
+def load_analytics_dimension(year, state, dimension):
+    if dimension not in ANALYTIC_DIMENSIONS:
+        raise QueryValidationError("Dimensão inválida.")
+    key = filter_key_for(year, state)
+    response = asset_response(f"data/analytics/{key}.json")
+    if response.status >= 400:
+        raise QueryDataError("Dados das distribuições não foram gerados.")
+    try:
+        analytics = json.loads(run_sync(response.text()))
+    except (TypeError, ValueError) as error:
+        raise QueryDataError("Arquivo de distribuições inválido.") from error
+    dimensions = analytics.get("dimensoes") if isinstance(analytics, dict) else None
+    values = dimensions.get(dimension) if isinstance(dimensions, dict) else None
+    if not isinstance(values, list):
+        raise QueryDataError(f"Distribuição preparada ausente para '{dimension}'.")
+    return values
+
+
+def load_record_manifest():
+    global _record_manifest_cache
+    if _record_manifest_cache is None:
+        response = asset_response("data/records/manifest.json")
+        if response.status >= 400:
+            abort(503, description="Manifesto de registros ausente. Gere os dados com tools/build_data.py.")
+        try:
+            _record_manifest_cache = json.loads(run_sync(response.text()))
+        except (TypeError, ValueError) as error:
+            raise RecordDataError("Manifesto de registros inválido.") from error
+    return _record_manifest_cache
+
+
+def load_record_chunk(path):
+    response = asset_response(f"data/records/{path}")
+    if response.status >= 400:
+        raise RecordDataError("Bloco de registros ausente. Gere novamente os dados preparados.")
+    try:
+        return json.loads(run_sync(response.text()))
+    except (TypeError, ValueError) as error:
+        raise RecordDataError("Bloco de registros inválido.") from error
+
+
+def load_analytics_for_request():
+    payload = {"operacao": "consultar_distribuicao"}
+    for field in ("ano", "uf", "dimensao", "metrica", "pagina", "por_pagina"):
+        value = request.args.get(field)
+        if value is not None and value != "":
+            payload[field] = value
+    return execute_query(
+        load_summaries(),
+        payload,
+        distribution_loader=load_analytics_dimension,
+    )
 
 
 def summary_value(name):
@@ -111,7 +176,11 @@ def consulta_analista():
     if not request.is_json:
         abort(400, description="Envie o corpo da consulta com Content-Type application/json.")
     try:
-        result = execute_query(load_summaries(), request.get_json())
+        result = execute_query(
+            load_summaries(),
+            request.get_json(),
+            distribution_loader=load_analytics_dimension,
+        )
     except QueryValidationError as error:
         abort(400, description=str(error))
     except QueryDataError as error:
@@ -165,7 +234,12 @@ def perguntar_analista():
         return response.to_py()
 
     try:
-        result = analyze_question(question, load_summaries(), infer)
+        result = analyze_question(
+            question,
+            load_summaries(),
+            infer,
+            distribution_loader=load_analytics_dimension,
+        )
     except AnalystAIError as error:
         abort(502, description=str(error))
     except QueryDataError as error:
@@ -197,6 +271,34 @@ def tabela_detalhada():
         status=response.status,
         content_type="application/json; charset=utf-8",
     )
+
+
+@app.get("/api/distribuicao")
+def distribuicao():
+    try:
+        return jsonify(load_analytics_for_request())
+    except QueryValidationError as error:
+        abort(400, description=str(error))
+    except QueryDataError as error:
+        abort(503, description=str(error))
+
+
+@app.get("/api/registros")
+def registros():
+    try:
+        result = query_records(
+            load_record_manifest(),
+            request.args.get("ano"),
+            request.args.get("uf"),
+            request.args.get("pagina"),
+            request.args.get("por_pagina"),
+            load_record_chunk,
+        )
+    except RecordValidationError as error:
+        abort(400, description=str(error))
+    except RecordDataError as error:
+        abort(503, description=str(error))
+    return jsonify(result)
 
 
 @app.errorhandler(400)

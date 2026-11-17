@@ -1,7 +1,10 @@
 """Validated, deterministic queries over the dashboard's prepared summaries."""
 
-from collections.abc import Mapping
+import math
+from collections.abc import Callable, Mapping
 from typing import cast
+
+from data_schema import ANALYTIC_DIMENSIONS, ANALYTIC_METRICS
 
 YEARS = frozenset(range(2017, 2025))
 YEAR_STRINGS = frozenset(str(year) for year in YEARS)
@@ -14,8 +17,26 @@ METRICS = {
     "acidentes": "total_acidentes",
     "mortes": "total_mortos",
     "feridos": "total_feridos",
+    "feridos_leves": "total_feridos_leves",
+    "feridos_graves": "total_feridos_graves",
+    "pessoas": "total_pessoas",
+    "ilesos": "total_ilesos",
+    "ignorados": "total_ignorados",
+    "veiculos": "total_veiculos",
+}
+DISTRIBUTION_METRICS = {
+    "acidentes": "acidentes",
+    "mortes": "mortos",
+    "feridos": "feridos",
+    "feridos_leves": "feridos_leves",
+    "feridos_graves": "feridos_graves",
+    "pessoas": "pessoas",
+    "ilesos": "ilesos",
+    "ignorados": "ignorados",
+    "veiculos": "veiculos",
 }
 SOURCE = "Dados PRF pré-processados do painel (2017–2024)."
+DistributionLoader = Callable[[int | None, str | None, str], object]
 
 
 class QueryValidationError(ValueError):
@@ -27,7 +48,9 @@ class QueryDataError(ValueError):
 
 
 def execute_query(
-    summaries: Mapping[str, object], payload: object
+    summaries: Mapping[str, object],
+    payload: object,
+    distribution_loader: DistributionLoader | None = None,
 ) -> dict[str, object]:
     query = _as_mapping(payload, "A consulta deve ser um objeto JSON.")
     operation = query.get("operacao")
@@ -40,6 +63,14 @@ def execute_query(
         "listar_causas": _listar_causas,
         "consultar_serie": _consultar_serie,
     }
+    if operation == "consultar_distribuicao":
+        result = _consultar_distribuicao(query, distribution_loader)
+        return {
+            "operacao": operation,
+            "fonte": SOURCE,
+            **result,
+        }
+
     handler = handlers.get(operation)
     if handler is None:
         raise QueryValidationError("Operação não suportada.")
@@ -50,6 +81,96 @@ def execute_query(
         "fonte": SOURCE,
         **result,
     }
+
+
+def _consultar_distribuicao(
+    query: Mapping[str, object],
+    distribution_loader: DistributionLoader | None,
+) -> dict[str, object]:
+    _check_fields(
+        query,
+        {"operacao", "ano", "uf", "dimensao", "metrica", "pagina", "por_pagina"},
+    )
+    year = _validate_year(query.get("ano"))
+    state = _validate_state(query.get("uf"))
+    dimension = query.get("dimensao")
+    if not isinstance(dimension, str) or dimension not in ANALYTIC_DIMENSIONS:
+        raise QueryValidationError("Dimensão inválida.")
+    metric = query.get("metrica", "acidentes")
+    if not isinstance(metric, str) or metric not in DISTRIBUTION_METRICS:
+        raise QueryValidationError("Métrica inválida para a distribuição solicitada.")
+    page = _validate_positive_integer(query.get("pagina"), "pagina", 1)
+    page_size = _validate_positive_integer(query.get("por_pagina"), "por_pagina", 10, 100)
+    if distribution_loader is None:
+        raise QueryDataError("Dados das distribuições não foram disponibilizados.")
+
+    raw_rows = distribution_loader(year, state, dimension)
+    if not isinstance(raw_rows, list):
+        raise QueryDataError("Distribuição preparada está ausente ou inválida.")
+
+    rows = []
+    for item in raw_rows:
+        if not isinstance(item, Mapping):
+            raise QueryDataError("Distribuição preparada contém uma linha inválida.")
+        label = item.get("valor")
+        if not isinstance(label, str):
+            raise QueryDataError("Distribuição preparada contém uma categoria inválida.")
+        values = {}
+        for field in ANALYTIC_METRICS:
+            value = item.get(field)
+            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                raise QueryDataError("Distribuição preparada contém uma métrica inválida.")
+            response_field = "mortes" if field == "mortos" else field
+            values[response_field] = value
+        rows.append({"valor": label, **values})
+
+    rows.sort(
+        key=lambda row: (-cast(int, row[metric]), cast(str, row["valor"]).casefold())
+    )
+    total_records = sum(cast(int, row["acidentes"]) for row in rows)
+    total_categories = len(rows)
+    total_pages = math.ceil(total_categories / page_size) if total_categories else 0
+    if total_pages and page > total_pages:
+        raise QueryValidationError(f"'pagina' deve estar entre 1 e {total_pages}.")
+    start = (page - 1) * page_size
+
+    return {
+        "filtros": {
+            "ano": year,
+            "uf": state,
+            "dimensao": dimension,
+            "metrica": metric,
+        },
+        "pagina": page,
+        "por_pagina": page_size,
+        "total_registros": total_records,
+        "total_categorias": total_categories,
+        "total_paginas": total_pages,
+        "resultado": rows[start:start + page_size],
+    }
+
+
+def _validate_positive_integer(
+    value: object,
+    field: str,
+    default: int,
+    maximum: int | None = None,
+) -> int:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        raise QueryValidationError(f"'{field}' deve ser um inteiro positivo.")
+    if isinstance(value, int):
+        number = value
+    elif isinstance(value, str) and value.isdigit():
+        number = int(value)
+    else:
+        raise QueryValidationError(f"'{field}' deve ser um inteiro positivo.")
+    if number < 1:
+        raise QueryValidationError(f"'{field}' deve ser um inteiro positivo.")
+    if maximum is not None and number > maximum:
+        raise QueryValidationError(f"'{field}' deve estar entre 1 e {maximum}.")
+    return number
 
 
 def _consultar_resumo(
@@ -162,16 +283,15 @@ def _consultar_serie(
     _check_fields(query, {"operacao", "uf", "metrica", "ano_inicio", "ano_fim"})
     state = _validate_state(query.get("uf"))
     metric = _require_metric(query.get("metrica"))
-    if metric == "feridos":
-        raise QueryValidationError("Séries anuais de feridos não estão disponíveis nos dados preparados.")
-
     start = _validate_year(query.get("ano_inicio", 2017), "ano_inicio")
     end = _validate_year(query.get("ano_fim", 2024), "ano_fim")
     if start is None or end is None or start > end:
         raise QueryValidationError("'ano_inicio' deve ser menor ou igual a 'ano_fim'.")
 
-    section_name = "acidentes_por_ano" if metric == "acidentes" else "mortos_por_ano"
-    series = _get_section(summaries, None, state, section_name)
+    series_by_metric = _get_section(summaries, None, state, "series_por_ano")
+    series = series_by_metric.get(metric)
+    if not isinstance(series, Mapping):
+        raise QueryDataError(f"Série preparada ausente para a métrica '{metric}'.")
     labels = series.get("labels")
     values = series.get("data")
     if not isinstance(labels, list) or not isinstance(values, list) or len(labels) != len(values):

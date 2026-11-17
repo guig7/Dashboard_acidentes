@@ -47,16 +47,16 @@
         "result": [
           {
             "causa": "Falta de Atenção à Condução",
-            "acidentes": 12872,
+            "acidentes": 12875,
             "mortes": 505,
-            "feridos": 13180,
+            "feridos": 13183,
             "taxa_severidade": 3.92
           },
           {
             "causa": "Velocidade Incompatível",
-            "acidentes": 7628,
+            "acidentes": 7630,
             "mortes": 647,
-            "feridos": 7721,
+            "feridos": 7722,
             "taxa_severidade": 8.48
           }
         ]
@@ -107,10 +107,67 @@
           "ano": 2017
         },
         "result": {
-          "acidentes": 35213,
-          "mortes": 2513,
-          "feridos": 33244
+          "acidentes": 35266,
+          "mortes": 2515,
+          "feridos": 33287,
+          "feridos_leves": 25829,
+          "feridos_graves": 7458,
+          "pessoas": 85248,
+          "ilesos": 40085,
+          "ignorados": 12031,
+          "veiculos": 67562
         }
+      }
+    },
+    {
+      "id": "condicoes-meteorologicas-frequentes",
+      "question": "Quais condições meteorológicas aparecem mais nos registros de acidentes?",
+      "expected": {
+        "supported": true,
+        "operation": "consultar_distribuicao",
+        "parameters": {
+          "dimensao": "condicao_metereologica",
+          "metrica": "acidentes",
+          "por_pagina": 3
+        },
+        "result": [
+          {
+            "valor": "Céu Claro",
+            "acidentes": 324411,
+            "mortes": 27068,
+            "feridos": 357567,
+            "feridos_leves": 268837,
+            "feridos_graves": 88730,
+            "pessoas": 822677,
+            "ilesos": 340322,
+            "ignorados": 124906,
+            "veiculos": 646811
+          },
+          {
+            "valor": "Nublado",
+            "acidentes": 90950,
+            "mortes": 7000,
+            "feridos": 99309,
+            "feridos_leves": 76108,
+            "feridos_graves": 23201,
+            "pessoas": 226683,
+            "ilesos": 93250,
+            "ignorados": 33519,
+            "veiculos": 177782
+          },
+          {
+            "valor": "Chuva",
+            "acidentes": 62025,
+            "mortes": 4483,
+            "feridos": 70037,
+            "feridos_leves": 55690,
+            "feridos_graves": 14347,
+            "pessoas": 153840,
+            "ilesos": 64111,
+            "ignorados": 19495,
+            "veiculos": 108891
+          }
+        ]
       }
     },
     {

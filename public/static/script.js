@@ -34,6 +34,42 @@ let mapLoadSequence     = 0;
 let filterReloadTimer   = null;
 let renderedMapFilterState = null;
 let analystEnabled = false;
+let distributionPage = 1;
+let distributionLoadSequence = 0;
+let recordsPage = 1;
+let recordsLoadSequence = 0;
+const RECORD_FIELD_LABELS = {
+    id: 'ID',
+    data_inversa: 'Data',
+    dia_semana: 'Dia da semana',
+    horario: 'Horário',
+    uf: 'UF',
+    br: 'BR',
+    km: 'Quilômetro',
+    municipio: 'Município',
+    causa_acidente: 'Causa registrada',
+    tipo_acidente: 'Tipo de acidente',
+    classificacao_acidente: 'Classificação do acidente',
+    fase_dia: 'Fase do dia',
+    sentido_via: 'Sentido da via',
+    condicao_metereologica: 'Condição meteorológica',
+    tipo_pista: 'Tipo de pista',
+    tracado_via: 'Traçado da via',
+    uso_solo: 'Uso do solo',
+    pessoas: 'Pessoas',
+    mortos: 'Mortos',
+    feridos_leves: 'Feridos leves',
+    feridos_graves: 'Feridos graves',
+    ilesos: 'Ilesos',
+    ignorados: 'Ignorados',
+    feridos: 'Feridos',
+    veiculos: 'Veículos',
+    latitude: 'Latitude',
+    longitude: 'Longitude',
+    regional: 'Regional',
+    delegacia: 'Delegacia',
+    uop: 'Unidade operacional'
+};
 const UF_IBGE_CODES = {
     AC: '12', AL: '27', AP: '16', AM: '13', BA: '29', CE: '23', DF: '53', ES: '32', GO: '52',
     MA: '21', MT: '51', MS: '50', MG: '31', PA: '15', PB: '25', PR: '41', PE: '26', PI: '22',
@@ -60,6 +96,8 @@ function carregarTudo() {
     carregarHeatmapHorarios();
     carregarRankingEstados();
     carregarTopCausas();
+    carregarDistribuicao();
+    carregarRegistros();
     carregarMapa();
 }
 
@@ -72,6 +110,28 @@ document.addEventListener('DOMContentLoaded', () => {
     setTimeout(carregarTudo, 120);
     document.getElementById('filter-ano').addEventListener('change', agendarAtualizacaoFiltros);
     document.getElementById('filter-uf').addEventListener('change', agendarAtualizacaoFiltros);
+    document.getElementById('distribution-dimension').addEventListener('change', () => carregarDistribuicao());
+    document.getElementById('distribution-metric').addEventListener('change', () => carregarDistribuicao());
+    document.getElementById('distribution-previous').addEventListener('click', () => {
+        if (distributionPage > 1) {
+            distributionPage -= 1;
+            carregarDistribuicao(false);
+        }
+    });
+    document.getElementById('distribution-next').addEventListener('click', () => {
+        distributionPage += 1;
+        carregarDistribuicao(false);
+    });
+    document.getElementById('records-previous').addEventListener('click', () => {
+        if (recordsPage > 1) {
+            recordsPage -= 1;
+            carregarRegistros(false);
+        }
+    });
+    document.getElementById('records-next').addEventListener('click', () => {
+        recordsPage += 1;
+        carregarRegistros(false);
+    });
     document.getElementById('filter-br').addEventListener('change', carregarMapa);
     document.querySelectorAll('[data-map-mode]').forEach(button => {
         button.addEventListener('click', () => setAccidentMode(button.dataset.mapMode));
@@ -82,6 +142,152 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // ─── FORMATTERS ───────────────────────────────────────────────────────────────
 const formatNum = (n) => new Intl.NumberFormat('pt-BR').format(n);
+
+function formatRecordValue(value) {
+    return value === null || value === undefined || value === '' ? '—' : String(value);
+}
+
+function appendCell(row, value, className = '') {
+    const cell = document.createElement('td');
+    cell.textContent = formatRecordValue(value);
+    if (className) cell.className = className;
+    row.appendChild(cell);
+    return cell;
+}
+
+async function carregarDistribuicao(resetPage = true) {
+    if (resetPage) distributionPage = 1;
+    const sequence = ++distributionLoadSequence;
+    const status = document.getElementById('distribution-status');
+    const tbody = document.getElementById('distribution-table-body');
+    const previous = document.getElementById('distribution-previous');
+    const next = document.getElementById('distribution-next');
+    const pageStatus = document.getElementById('distribution-page-status');
+    const dimension = document.getElementById('distribution-dimension').value;
+    const metric = document.getElementById('distribution-metric').value;
+    status.textContent = 'Consultando a distribuição...';
+    status.dataset.state = 'loading';
+    tbody.innerHTML = '';
+    previous.disabled = true;
+    next.disabled = true;
+    pageStatus.textContent = '';
+
+    try {
+        const url = new URL(getUrlComFiltros('/api/distribuicao'), window.location.origin);
+        url.searchParams.set('dimensao', dimension);
+        url.searchParams.set('metrica', metric);
+        url.searchParams.set('pagina', String(distributionPage));
+        url.searchParams.set('por_pagina', '25');
+        const response = await fetch(url);
+        const payload = await response.json().catch(() => null);
+        if (!response.ok) {
+            throw new Error(payload && typeof payload.erro === 'string'
+                ? payload.erro : 'Não foi possível carregar a distribuição.');
+        }
+        if (!payload || !Array.isArray(payload.resultado) || !Number.isInteger(payload.total_paginas)) {
+            throw new Error('A API retornou uma distribuição inválida.');
+        }
+        if (sequence !== distributionLoadSequence) return;
+
+        payload.resultado.forEach(item => {
+            const row = document.createElement('tr');
+            appendCell(row, item.valor, 'category-cell');
+            ['acidentes', 'mortes', 'feridos', 'feridos_leves', 'feridos_graves',
+                'pessoas', 'ilesos', 'ignorados', 'veiculos'].forEach(field => {
+                appendCell(row, item[field]);
+            });
+            tbody.appendChild(row);
+        });
+
+        const totalPages = payload.total_paginas;
+        status.textContent = `${formatNum(payload.total_categorias)} categorias · ${formatNum(payload.total_registros)} registros no recorte.`;
+        status.dataset.state = 'ready';
+        pageStatus.textContent = totalPages
+            ? `Página ${formatNum(payload.pagina)} de ${formatNum(totalPages)}`
+            : 'Nenhuma categoria disponível';
+        previous.disabled = payload.pagina <= 1;
+        next.disabled = payload.pagina >= totalPages;
+    } catch (error) {
+        if (sequence !== distributionLoadSequence) return;
+        console.error('Distribuição dos dados:', error);
+        status.textContent = error.message || 'Não foi possível carregar a distribuição.';
+        status.dataset.state = 'error';
+    }
+}
+
+async function carregarRegistros(resetPage = true) {
+    if (resetPage) recordsPage = 1;
+    const sequence = ++recordsLoadSequence;
+    const status = document.getElementById('records-status');
+    const tbody = document.getElementById('records-table-body');
+    const previous = document.getElementById('records-previous');
+    const next = document.getElementById('records-next');
+    const pageStatus = document.getElementById('records-page-status');
+    status.textContent = 'Consultando os registros...';
+    status.dataset.state = 'loading';
+    tbody.innerHTML = '';
+    previous.disabled = true;
+    next.disabled = true;
+    pageStatus.textContent = '';
+
+    try {
+        const url = new URL(getUrlComFiltros('/api/registros'), window.location.origin);
+        url.searchParams.set('pagina', String(recordsPage));
+        url.searchParams.set('por_pagina', '50');
+        const response = await fetch(url);
+        const payload = await response.json().catch(() => null);
+        if (!response.ok) {
+            throw new Error(payload && typeof payload.erro === 'string'
+                ? payload.erro : 'Não foi possível carregar os registros.');
+        }
+        if (!payload || !Array.isArray(payload.registros) || !Number.isInteger(payload.total_paginas)) {
+            throw new Error('A API retornou registros em formato inválido.');
+        }
+        if (sequence !== recordsLoadSequence) return;
+
+        const visibleFields = [
+            'data_inversa', 'horario', 'uf', 'br', 'municipio',
+            'condicao_metereologica', 'causa_acidente', 'tipo_acidente',
+            'classificacao_acidente', 'mortos', 'feridos'
+        ];
+        payload.registros.forEach(record => {
+            const row = document.createElement('tr');
+            visibleFields.forEach(field => appendCell(row, record[field]));
+
+            const detailsCell = document.createElement('td');
+            const details = document.createElement('details');
+            const summary = document.createElement('summary');
+            summary.textContent = 'Todos os campos';
+            const fields = document.createElement('dl');
+            fields.className = 'record-fields';
+            Object.entries(record).forEach(([field, value]) => {
+                const label = document.createElement('dt');
+                label.textContent = RECORD_FIELD_LABELS[field] || field;
+                const content = document.createElement('dd');
+                content.textContent = formatRecordValue(value);
+                fields.append(label, content);
+            });
+            details.append(summary, fields);
+            detailsCell.appendChild(details);
+            row.appendChild(detailsCell);
+            tbody.appendChild(row);
+        });
+
+        const totalPages = payload.total_paginas;
+        status.textContent = `${formatNum(payload.registros.length)} registros nesta página · ${formatNum(payload.total_registros)} no recorte.`;
+        status.dataset.state = 'ready';
+        pageStatus.textContent = totalPages
+            ? `Página ${formatNum(payload.pagina)} de ${formatNum(totalPages)}`
+            : 'Nenhum registro disponível';
+        previous.disabled = payload.pagina <= 1;
+        next.disabled = payload.pagina >= totalPages;
+    } catch (error) {
+        if (sequence !== recordsLoadSequence) return;
+        console.error('Registros completos:', error);
+        status.textContent = error.message || 'Não foi possível carregar os registros.';
+        status.dataset.state = 'error';
+    }
+}
 
 async function carregarStatusAnalista() {
     const form = document.getElementById('analyst-form');

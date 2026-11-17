@@ -21,6 +21,7 @@ from analyst_queries import SOURCE
 
 FIXTURE_PATH = ROOT / "tests" / "fixtures" / "analyst_questions.json"
 SUMMARY_PATH = ROOT / "public" / "data" / "summary.json"
+ANALYTICS_DIR = ROOT / "public" / "data" / "analytics"
 
 
 class AnalystAITests(unittest.TestCase):
@@ -63,6 +64,7 @@ class AnalystAITests(unittest.TestCase):
                     case["question"],
                     self.summaries,
                     lambda _options: model_response,
+                    distribution_loader=self._load_distribution,
                 )
 
                 if expected["supported"]:
@@ -152,6 +154,64 @@ class AnalystAITests(unittest.TestCase):
             result["resposta"],
             "O painel contém registros históricos e não permite prever acidentes futuros.",
         )
+
+    def test_weather_distribution_answer_is_historical_and_uses_prepared_values(self):
+        response = {
+            "choices": [{
+                "message": {
+                    "tool_calls": [{
+                        "function": {
+                            "name": "consultar_distribuicao",
+                            "arguments": json.dumps({
+                                "ano": 2023,
+                                "dimensao": "condicao_metereologica",
+                                "metrica": "acidentes",
+                            }),
+                        },
+                    }],
+                },
+            }],
+        }
+        distributions = [
+            {
+                "valor": "Chuva",
+                "acidentes": 12,
+                "mortos": 2,
+                "feridos": 5,
+                "feridos_leves": 4,
+                "feridos_graves": 1,
+                "pessoas": 18,
+                "ilesos": 3,
+                "ignorados": 0,
+                "veiculos": 14,
+            },
+        ]
+
+        result = analyze_question(
+            "Quais condições meteorológicas aparecem mais?",
+            self.summaries,
+            lambda _options: response,
+            distribution_loader=lambda year, state, dimension: (
+                distributions
+                if (year, state, dimension) == (2023, None, "condicao_metereologica")
+                else []
+            ),
+        )
+
+        self.assertEqual(result["resultado"][0]["valor"], "Chuva")
+        self.assertIn("12 acidentes", result["resposta"])
+        self.assertIn("não demonstram causalidade", result["resposta"])
+
+    @staticmethod
+    def _load_distribution(year, state, dimension):
+        parts = []
+        if year is not None:
+            parts.append(f"year_{year}")
+        if state is not None:
+            parts.append(f"uf_{state}")
+        key = "_".join(parts) or "all"
+        analytics = json.loads((ANALYTICS_DIR / f"{key}.json").read_text(encoding="utf-8"))
+        return analytics["dimensoes"][dimension]
 
     def test_refusal_tool_rejects_model_generated_fields(self):
         with self.assertRaises(AnalystAIError):

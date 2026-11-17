@@ -1,6 +1,10 @@
+import sys
 import unittest
+from pathlib import Path
 
-from src.analyst_queries import QueryDataError, QueryValidationError, execute_query
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+
+from analyst_queries import QueryDataError, QueryValidationError, execute_query
 
 
 SUMMARIES = {
@@ -9,9 +13,20 @@ SUMMARIES = {
             "total_acidentes": 100,
             "total_mortos": 10,
             "total_feridos": 20,
+            "total_feridos_leves": 16,
+            "total_feridos_graves": 4,
+            "total_pessoas": 130,
+            "total_ilesos": 110,
+            "total_ignorados": 3,
+            "total_veiculos": 72,
         },
         "acidentes_por_ano": {"labels": [2022, 2023, 2024], "data": [30, 40, 30]},
         "mortos_por_ano": {"labels": [2022, 2023, 2024], "data": [3, 4, 3]},
+        "series_por_ano": {
+            "acidentes": {"labels": [2022, 2023, 2024], "data": [30, 40, 30]},
+            "mortes": {"labels": [2022, 2023, 2024], "data": [3, 4, 3]},
+            "feridos": {"labels": [2022, 2023, 2024], "data": [8, 7, 5]},
+        },
         "causas": {
             "labels": ["Falta de atenção", "Velocidade incompatível"],
             "data": [60, 40],
@@ -85,6 +100,90 @@ class ExecuteQueryTests(unittest.TestCase):
             {"ano": 2024, "valor": 30},
         ])
 
+    def test_weather_distribution_sorts_and_paginates_all_metrics(self):
+        distribution = [
+            {
+                "valor": "Chuva",
+                "acidentes": 18,
+                "mortos": 3,
+                "feridos": 20,
+                "feridos_leves": 16,
+                "feridos_graves": 4,
+                "pessoas": 28,
+                "ilesos": 5,
+                "ignorados": 1,
+                "veiculos": 22,
+            },
+            {
+                "valor": "Céu claro",
+                "acidentes": 12,
+                "mortos": 4,
+                "feridos": 10,
+                "feridos_leves": 9,
+                "feridos_graves": 1,
+                "pessoas": 18,
+                "ilesos": 7,
+                "ignorados": 0,
+                "veiculos": 15,
+            },
+        ]
+        result = execute_query(
+            SUMMARIES,
+            {
+                "operacao": "consultar_distribuicao",
+                "ano": "2023",
+                "uf": "sp",
+                "dimensao": "condicao_metereologica",
+                "metrica": "mortes",
+                "pagina": "1",
+                "por_pagina": "1",
+            },
+            distribution_loader=lambda year, state, dimension: (
+                distribution
+                if (year, state, dimension) == (2023, "SP", "condicao_metereologica")
+                else []
+            ),
+        )
+
+        self.assertEqual(result["filtros"], {
+            "ano": 2023,
+            "uf": "SP",
+            "dimensao": "condicao_metereologica",
+            "metrica": "mortes",
+        })
+        self.assertEqual(result["total_registros"], 30)
+        self.assertEqual(result["total_categorias"], 2)
+        self.assertEqual(result["resultado"][0]["valor"], "Céu claro")
+        self.assertEqual(result["resultado"][0]["mortes"], 4)
+
+    def test_distribution_rejects_unknown_dimensions_and_unbounded_pages(self):
+        with self.assertRaises(QueryValidationError):
+            execute_query(
+                SUMMARIES,
+                {
+                    "operacao": "consultar_distribuicao",
+                    "dimensao": "sql",
+                },
+                distribution_loader=lambda *_args: [],
+            )
+        with self.assertRaises(QueryValidationError):
+            execute_query(
+                SUMMARIES,
+                {
+                    "operacao": "consultar_distribuicao",
+                    "dimensao": "condicao_metereologica",
+                    "por_pagina": 101,
+                },
+                distribution_loader=lambda *_args: [],
+            )
+
+    def test_distribution_requires_prepared_data(self):
+        with self.assertRaises(QueryDataError):
+            execute_query(SUMMARIES, {
+                "operacao": "consultar_distribuicao",
+                "dimensao": "condicao_metereologica",
+            })
+
     def test_rejects_unknown_fields_and_out_of_range_years(self):
         with self.assertRaises(QueryValidationError):
             execute_query(SUMMARIES, {
@@ -97,11 +196,22 @@ class ExecuteQueryTests(unittest.TestCase):
                 "ano": 2025,
             })
 
-    def test_rejects_unavailable_injury_series_and_invalid_comparison(self):
+    def test_injury_series_is_available_and_invalid_metric_is_rejected(self):
+        result = execute_query(SUMMARIES, {
+            "operacao": "consultar_serie",
+            "metrica": "feridos",
+            "ano_inicio": 2023,
+            "ano_fim": 2024,
+        })
+
+        self.assertEqual(result["resultado"], [
+            {"ano": 2023, "valor": 7},
+            {"ano": 2024, "valor": 5},
+        ])
         with self.assertRaises(QueryValidationError):
             execute_query(SUMMARIES, {
                 "operacao": "consultar_serie",
-                "metrica": "feridos",
+                "metrica": "risco",
             })
         with self.assertRaises(QueryValidationError):
             execute_query(SUMMARIES, {

@@ -53,15 +53,16 @@ flowchart LR
 
 ## Dados em JSON
 
-Os arquivos JSON são respostas já organizadas para o dashboard. Em vez de enviar a base completa para o navegador, o site solicita somente o conjunto de dados necessário para a visualização e os filtros atuais.
+Os arquivos JSON são preparados antes da publicação. O site não baixa a base inteira: solicita somente a página de registros ou a distribuição necessária para os filtros atuais. O CSV atual contém 547.347 registros e 30 colunas.
 
 - **Resumo:** agrega indicadores e séries para o painel, incluindo combinações de ano e UF.
+- **Distribuições:** agrega as dimensões categóricas da base, como condição meteorológica, dia, horário, causa, tipo, município, BR e unidade operacional, com contagens de acidentes e totais de pessoas, vítimas e veículos.
+- **Registros completos:** preserva todos os 30 campos em blocos JSON separados por ano e UF. O manifesto descreve o esquema e os blocos; a API entrega páginas, sem exigir que o navegador carregue todos os arquivos.
 - **Mapas:** contém ocorrências geolocalizadas para o mapa geral e para recortes filtrados.
-- **Tabelas:** contém linhas detalhadas de acidentes para preencher a tabela de registros.
 - **Geometrias:** arquivos GeoJSON descrevem limites do Brasil e estados, além dos trechos de rodovias.
 - **Acidentes por BR:** arquivos separados permitem consultar e desenhar ocorrências associadas a cada rodovia.
 
-Os arquivos disponibilizados em `public/data/` são recursos públicos, usados pelo site para montar as visualizações. Eles não devem conter informações privadas.
+Os totais e distribuições usam todos os registros do CSV, inclusive os que não têm coordenadas válidas. Somente esses registros geolocalizados podem aparecer no mapa. Os arquivos em `public/data/` são recursos públicos e não devem conter informações privadas. Os blocos completos são particionados para respeitar o limite de tamanho por arquivo dos Static Assets da Cloudflare.
 
 ## API do dashboard
 
@@ -78,17 +79,36 @@ As rotas `/api/*` fornecem os dados consumidos pela interface. As rotas de resum
 | `/api/causas` | Principais causas registradas |
 | `/api/estados` | Totais por UF |
 | `/api/mapa` | Ocorrências para o mapa |
-| `/api/tabela_detalhada` | Linhas para a tabela detalhada |
-| `POST /api/analista/consulta` | Consultas determinísticas para o analista de dados; não chama um modelo de IA |
+| `/api/tabela_detalhada` | Amostra preparada para compatibilidade |
+| `/api/distribuicao` | Distribuição paginada por uma dimensão e métrica |
+| `/api/registros` | Registros completos paginados, com todos os campos do CSV |
+| `POST /api/analista/consulta` | Consultas determinísticas; não chama um modelo de IA |
 | `GET /api/analista/status` | Informa se a IA e o limitador estão habilitados e configurados |
 | `POST /api/analista/perguntar` | Interpreta uma pergunta com Workers AI e executa somente uma consulta determinística permitida |
 
 O endpoint de consulta recebe um objeto JSON com uma operação e seus parâmetros. Operações disponíveis:
 
-- `consultar_resumo`: `ano`, `uf` e `metrica` opcionais; métricas aceitas: `acidentes`, `mortes` e `feridos`.
-- `comparar_estados`: `ufs` (2 a 10 siglas), `metrica` e `ano` opcionais.
+- `consultar_resumo`: `ano`, `uf` e `metrica` opcionais; métricas aceitas: acidentes, mortes, feridos, feridos leves/graves, pessoas, ilesos, ignorados e veículos.
+- `comparar_estados`: `ufs` (2 a 10 siglas), `metrica` e `ano` opcionais; aceita as mesmas métricas de resumo.
 - `listar_causas`: `ano`, `uf` e `limite` opcionais; o limite máximo é 10.
-- `consultar_serie`: `metrica` (`acidentes` ou `mortes`), `uf`, `ano_inicio` e `ano_fim` opcionais.
+- `consultar_serie`: `metrica`, `uf`, `ano_inicio` e `ano_fim` opcionais; além de acidentes, mortes e feridos, aceita feridos leves/graves, pessoas, ilesos, ignorados e veículos.
+- `consultar_distribuicao`: `dimensao` e `metrica` obrigatórias; aceita os filtros `ano` e `uf` e paginação por `pagina`/`por_pagina` (máximo 100). Dimensões incluem condição meteorológica, mês, dia da semana, fase/hora do dia, causa, tipo, classificação, UF, BR, município, regional, delegacia e UOP. Métricas incluem acidentes, mortes, tipos de feridos, pessoas, ilesos, ignorados e veículos.
+
+`GET /api/distribuicao` expõe a mesma consulta para o dashboard. Exemplo: `/api/distribuicao?dimensao=condicao_metereologica&metrica=acidentes&ano=2023&uf=GO`.
+
+Exemplo de corpo para uma consulta determinística sobre clima:
+
+```json
+{
+  "operacao": "consultar_distribuicao",
+  "dimensao": "condicao_metereologica",
+  "metrica": "acidentes",
+  "ano": 2023,
+  "por_pagina": 5
+}
+```
+
+`GET /api/registros` aceita `ano` e `uf` opcionais, `pagina` (a partir de 1) e `por_pagina` (padrão 50, máximo 100). A resposta informa o total do recorte e contém cada registro com os 30 campos do CSV. A ordem é por ano, UF e ordem original dentro de cada partição. Registros sem data/UF válida continuam disponíveis sem filtros, mas não entram em um recorte que exija essa informação.
 
 Exemplo de comparação:
 
@@ -101,9 +121,9 @@ Exemplo de comparação:
 }
 ```
 
-O endpoint valida a consulta e retorna os valores estruturados com filtros e fonte. Ele não interpreta linguagem natural; séries anuais de feridos ainda não estão nos dados preparados.
+O endpoint valida a consulta e retorna os valores estruturados com filtros e fonte. Ele não interpreta linguagem natural. As distribuições e séries são calculadas de forma determinística a partir dos dados preparados, sem SQL arbitrário.
 
-O endpoint de linguagem natural recebe `{"pergunta":"Quantos acidentes foram registrados em 2022?"}`. A resposta inclui o texto montado a partir dos resultados, a operação, os filtros e a fonte; o modelo não calcula os números nem fornece texto livre ao usuário. Perguntas fora do escopo devem ser recusadas.
+O endpoint de linguagem natural recebe `{"pergunta":"Quantos acidentes foram registrados em 2022?"}`. A resposta inclui o texto montado a partir dos resultados, a operação, os filtros e a fonte; o modelo não calcula os números nem fornece texto livre ao usuário. Ele também pode consultar distribuições históricas, inclusive de condições meteorológicas. Essas contagens não demonstram causalidade, não medem risco sem exposição ao tráfego e não geram previsão nem alerta operacional. Perguntas fora do escopo devem ser recusadas.
 
 Workers AI usa o binding `AI`, com o modelo `@cf/zai-org/glm-4.7-flash`. O recurso fica desativado por padrão em `wrangler.jsonc` (`ANALYST_AI_ENABLED: "false"`); chamadas reais só ocorrem depois de habilitá-lo. A pergunta é limitada a 500 caracteres e a geração a 160 tokens. Não há integração com AI Gateway nem armazenamento próprio das perguntas.
 

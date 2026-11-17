@@ -6,8 +6,12 @@ Usage:
 """
 
 import argparse
+import csv
 import gzip
 import json
+import math
+import sys
+from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlencode
 from urllib.request import urlopen
@@ -15,6 +19,16 @@ from urllib.request import urlopen
 import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "src"))
+
+from data_schema import (
+    ANALYTIC_DIMENSIONS,
+    ANALYTIC_METRICS,
+    RECORD_COLUMNS,
+    RECORD_FLOAT_FIELDS,
+    RECORD_INTEGER_FIELDS,
+)
+
 OUT = ROOT / "public" / "data"
 YEARS = range(2017, 2025)
 STATES = [
@@ -23,9 +37,10 @@ STATES = [
     "RR", "SC", "SP", "SE", "TO",
 ]
 CSV_COLUMNS = [
-    "data_inversa", "uf", "br", "km", "municipio", "causa_acidente", "tipo_acidente",
-    "classificacao_acidente", "mortos", "feridos", "latitude", "longitude", "horario",
+    column for column in RECORD_COLUMNS if column != "id"
 ]
+RECORD_CHUNK_SIZE = 1000
+MAX_ASSET_BYTES = 20 * 1024 * 1024
 
 
 def resolve_csv(csv_arg):
@@ -49,27 +64,51 @@ def make_entry(frame, prior_frame):
         return {
             "stats_gerais": {}, "acidentes_por_ano": {}, "mortos_por_ano": {},
             "causas": {}, "estados": {}, "taxa_severidade": {},
-            "heatmap_horarios": {}, "ranking_estados": {},
+            "heatmap_horarios": {}, "ranking_estados": {}, "series_por_ano": {},
         }
 
-    by_year = frame.groupby("ano").size().sort_index()
+    by_year = frame.groupby("ano", observed=True).size().sort_index()
     by_year = by_year[by_year.index > 0]
-    deaths_year = frame.groupby("ano")["mortos"].sum().sort_index()
+    deaths_year = frame.groupby("ano", observed=True)["mortos"].sum().sort_index()
     deaths_year = deaths_year[deaths_year.index > 0]
+    annual_metrics = frame[frame["ano"] > 0].groupby("ano", observed=True).agg(
+        acidentes=("ano", "size"),
+        mortes=("mortos", "sum"),
+        feridos=("feridos", "sum"),
+        feridos_leves=("feridos_leves", "sum"),
+        feridos_graves=("feridos_graves", "sum"),
+        pessoas=("pessoas", "sum"),
+        ilesos=("ilesos", "sum"),
+        ignorados=("ignorados", "sum"),
+        veiculos=("veiculos", "sum"),
+    ).sort_index()
+    annual_series = {
+        ("mortes" if metric == "mortos" else metric): {
+            "labels": annual_metrics.index.astype(int).tolist(),
+            "data": annual_metrics[
+                "mortes" if metric == "mortos" else metric
+            ].astype(int).tolist(),
+        }
+        for metric in ANALYTIC_METRICS
+    }
 
-    causes = frame.groupby("causa_acidente").agg(
+    causes = frame.groupby("causa_acidente", observed=True).agg(
         total=("causa_acidente", "count"), mortos=("mortos", "sum"), feridos=("feridos", "sum")
     ).sort_values("total", ascending=False).head(10).reset_index()
     causes["taxa_severidade"] = (causes["mortos"] / causes["total"] * 100).round(2)
 
     states = frame["uf"].value_counts()
-    ranking = frame.groupby("uf").agg(total_mortos=("mortos", "sum"), acidentes=("mortos", "size"))
+    ranking = frame.groupby("uf", observed=True).agg(
+        total_mortos=("mortos", "sum"), acidentes=("mortos", "size")
+    )
     ranking["taxa_severidade"] = (ranking["total_mortos"] / ranking["acidentes"] * 100).round(2)
     ranking = ranking.sort_values("taxa_severidade", ascending=False).head(15)
 
-    hours = frame.copy()
+    hours = frame[["horario", "mortos"]].copy()
     hours["hora"] = pd.to_numeric(hours["horario"].astype(str).str[:2], errors="coerce").fillna(0).astype(int)
-    hour_summary = hours.groupby("hora").agg(mortos=("mortos", "sum"), acidentes=("horario", "count")).sort_index()
+    hour_summary = hours.groupby("hora", observed=True).agg(
+        mortos=("mortos", "sum"), acidentes=("horario", "count")
+    ).sort_index()
     hour_summary["severidade"] = (hour_summary["mortos"] / hour_summary["acidentes"] * 100).round(2)
 
     accidents = len(frame)
@@ -80,9 +119,20 @@ def make_entry(frame, prior_frame):
     prior_rate = prior_deaths / prior_accidents * 100 if prior_accidents else 0
 
     return jsonable({
-        "stats_gerais": {"total_acidentes": accidents, "total_mortos": deaths, "total_feridos": int(frame["feridos"].sum())},
+        "stats_gerais": {
+            "total_acidentes": accidents,
+            "total_mortos": deaths,
+            "total_feridos": int(frame["feridos"].sum()),
+            "total_feridos_leves": int(frame["feridos_leves"].sum()),
+            "total_feridos_graves": int(frame["feridos_graves"].sum()),
+            "total_pessoas": int(frame["pessoas"].sum()),
+            "total_ilesos": int(frame["ilesos"].sum()),
+            "total_ignorados": int(frame["ignorados"].sum()),
+            "total_veiculos": int(frame["veiculos"].sum()),
+        },
         "acidentes_por_ano": {"labels": by_year.index.astype(int).tolist(), "data": by_year.astype(int).tolist()},
         "mortos_por_ano": {"labels": deaths_year.index.astype(int).tolist(), "data": deaths_year.astype(int).tolist()},
+        "series_por_ano": annual_series,
         "causas": {
             "labels": causes["causa_acidente"].tolist(), "data": causes["total"].astype(int).tolist(),
             "mortos": causes["mortos"].astype(int).tolist(), "feridos": causes["feridos"].astype(int).tolist(),
@@ -117,6 +167,217 @@ def normalize_br(value):
         text = text[:-2]
     digits = "".join(character for character in text if character.isdigit())
     return digits.zfill(3) if digits else ""
+
+
+def _record_value(column, raw_value, row_number):
+    value = (raw_value or "").strip()
+    if not value:
+        return None
+    if column in RECORD_INTEGER_FIELDS:
+        try:
+            number = float(value)
+            if not number.is_integer():
+                raise ValueError("valor não inteiro")
+            return int(number)
+        except ValueError as error:
+            raise ValueError(
+                f"Valor inválido na coluna '{column}', linha {row_number}: {value!r}."
+            ) from error
+    if column in RECORD_FLOAT_FIELDS:
+        try:
+            number = float(value.replace(",", "."))
+            if not math.isfinite(number):
+                raise ValueError("valor não finito")
+            return number
+        except ValueError as error:
+            raise ValueError(
+                f"Valor inválido na coluna '{column}', linha {row_number}: {value!r}."
+            ) from error
+    return value
+
+
+def write_record_assets(csv_path, output_dir, chunk_size=RECORD_CHUNK_SIZE):
+    """Write all source rows as schema-backed JSON chunks grouped by year and UF."""
+    if isinstance(chunk_size, bool) or not isinstance(chunk_size, int) or chunk_size < 1:
+        raise ValueError("O tamanho dos blocos de registros deve ser um inteiro positivo.")
+
+    records_dir = output_dir / "records"
+    records_dir.mkdir(parents=True, exist_ok=True)
+    for old_shard in records_dir.rglob("part_*.json"):
+        old_shard.unlink()
+
+    counts = {}
+    chunk_counts = {}
+    buffers = {}
+
+    def partition_for(row):
+        date_text = (row.get("data_inversa") or "").strip()
+        try:
+            year = int(datetime.strptime(date_text, "%d/%m/%Y").year)
+        except ValueError:
+            year = None
+        if year not in YEARS:
+            year = None
+
+        state_text = (row.get("uf") or "").strip().upper()
+        state = state_text if state_text in STATES else None
+        return year, state
+
+    def flush_partition(partition):
+        rows = buffers[partition]
+        if not rows:
+            return
+        year, state = partition
+        year_dir = f"year_{year}" if year is not None else "year_unknown"
+        state_dir = f"uf_{state}" if state is not None else "uf_unknown"
+        partition_dir = records_dir / year_dir / state_dir
+        partition_dir.mkdir(parents=True, exist_ok=True)
+        chunk_index = chunk_counts.get(partition, 0)
+        serialized = json.dumps(
+            {"rows": rows}, ensure_ascii=False, separators=(",", ":"), allow_nan=False
+        )
+        if len(serialized.encode("utf-8")) > MAX_ASSET_BYTES:
+            raise ValueError(
+                f"Bloco de registros acima do limite seguro em {year_dir}/{state_dir}; "
+                "reduza RECORD_CHUNK_SIZE."
+            )
+        (partition_dir / f"part_{chunk_index:04d}.json").write_text(
+            serialized, encoding="utf-8"
+        )
+        chunk_counts[partition] = chunk_index + 1
+        buffers[partition] = []
+
+    with Path(csv_path).open("r", encoding="latin-1", newline="") as csv_file:
+        reader = csv.DictReader(csv_file, delimiter=";")
+        missing = [column for column in RECORD_COLUMNS if column not in (reader.fieldnames or [])]
+        if missing:
+            raise ValueError(f"Colunas ausentes no CSV completo: {', '.join(missing)}")
+
+        for row_number, row in enumerate(reader, start=2):
+            if None in row:
+                raise ValueError(f"Quantidade de campos inesperada na linha {row_number} do CSV.")
+            partition = partition_for(row)
+            rows = buffers.setdefault(partition, [])
+            rows.append([
+                _record_value(column, row.get(column), row_number)
+                for column in RECORD_COLUMNS
+            ])
+            counts[partition] = counts.get(partition, 0) + 1
+            if len(rows) >= chunk_size:
+                flush_partition(partition)
+
+    for partition in sorted(
+        buffers,
+        key=lambda item: (
+            item[0] is None, item[0] or 0, item[1] is None, item[1] or ""
+        ),
+    ):
+        flush_partition(partition)
+
+    partitions = []
+    for year, state in sorted(
+        counts,
+        key=lambda item: (
+            item[0] is None, item[0] or 0, item[1] is None, item[1] or ""
+        ),
+    ):
+        year_dir = f"year_{year}" if year is not None else "year_unknown"
+        state_dir = f"uf_{state}" if state is not None else "uf_unknown"
+        partitions.append({
+            "ano": year,
+            "uf": state,
+            "quantidade": counts[(year, state)],
+            "blocos": chunk_counts[(year, state)],
+            "caminho": f"{year_dir}/{state_dir}",
+        })
+
+    manifest = {
+        "versao": 1,
+        "total_registros": sum(counts.values()),
+        "tamanho_bloco": chunk_size,
+        "colunas": list(RECORD_COLUMNS),
+        "particoes": partitions,
+    }
+    (records_dir / "manifest.json").write_text(
+        json.dumps(manifest, ensure_ascii=False, separators=(",", ":")),
+        encoding="utf-8",
+    )
+    return manifest
+
+
+def write_analytics(frame, output_dir, filter_sets):
+    """Precompute complete categorical distributions for every dashboard filter."""
+    analytics_dir = output_dir / "analytics"
+    analytics_dir.mkdir(parents=True, exist_ok=True)
+
+    for old_file in analytics_dir.glob("*.json"):
+        old_file.unlink()
+
+    grouped_dimensions = {}
+    numeric_metrics = [metric for metric in ANALYTIC_METRICS if metric != "acidentes"]
+    for dimension in ANALYTIC_DIMENSIONS:
+        if dimension == "ano":
+            values = frame["ano"].map(
+                lambda year: "Não informado" if year == 0 else str(year)
+            )
+        elif dimension == "mes":
+            values = frame["mes"]
+        elif dimension in {"uf", "br"}:
+            values = frame[dimension].replace("", "Não informado")
+        else:
+            values = frame[dimension]
+        source = frame.assign(_dimension=values)
+        grouped = source.groupby(
+            ["ano", "uf", "_dimension"], dropna=False, observed=True
+        ).agg(
+            acidentes=("uf", "size"),
+            **{metric: (metric, "sum") for metric in numeric_metrics},
+        ).reset_index()
+        grouped_dimensions[dimension] = grouped
+
+    for year, state in filter_sets:
+        key = filter_key(year, state)
+        dimensions = {}
+        filtered_frame = frame
+        if year is not None:
+            filtered_frame = filtered_frame[filtered_frame["ano"] == year]
+        if state is not None:
+            filtered_frame = filtered_frame[filtered_frame["uf"] == state]
+        for dimension, grouped in grouped_dimensions.items():
+            selected = grouped
+            if year is not None:
+                selected = selected[selected["ano"] == year]
+            if state is not None:
+                selected = selected[selected["uf"] == state]
+            if selected.empty:
+                dimensions[dimension] = []
+                continue
+
+            totals = selected.groupby(
+                "_dimension", dropna=False, observed=True
+            )[list(ANALYTIC_METRICS)].sum().reset_index()
+            totals = totals.sort_values(
+                ["acidentes", "_dimension"],
+                ascending=[False, True],
+                kind="stable",
+            )
+            dimensions[dimension] = [
+                {
+                    "valor": str(row["_dimension"]),
+                    **{metric: int(row[metric]) for metric in ANALYTIC_METRICS},
+                }
+                for _, row in totals.iterrows()
+            ]
+
+        (analytics_dir / f"{key}.json").write_text(
+            json.dumps(
+                {"total_registros": int(len(filtered_frame)), "dimensoes": dimensions},
+                ensure_ascii=False,
+                separators=(",", ":"),
+                allow_nan=False,
+            ),
+            encoding="utf-8",
+        )
 
 
 def download_road_geometries(output_dir):
@@ -195,26 +456,48 @@ def main():
 
     csv_path = resolve_csv(args.csv)
     csv_header = pd.read_csv(csv_path, sep=";", encoding="latin-1", nrows=0).columns
-    required_columns = [column for column in CSV_COLUMNS if column not in {"br", "km"}]
-    missing = [column for column in required_columns if column not in csv_header]
+    missing = [column for column in RECORD_COLUMNS if column not in csv_header]
     if missing:
-        raise ValueError(f"Colunas ausentes no CSV: {', '.join(missing)}")
+        raise ValueError(f"Colunas ausentes no CSV completo: {', '.join(missing)}")
 
     use_columns = [column for column in CSV_COLUMNS if column in csv_header]
-    frame = pd.read_csv(csv_path, sep=";", encoding="latin-1", usecols=use_columns)
-    for column in ("br", "km"):
-        if column not in frame:
-            frame[column] = ""
+    frame = pd.read_csv(
+        csv_path,
+        sep=";",
+        encoding="latin-1",
+        usecols=use_columns,
+        dtype={
+            column: "category"
+            for column in ANALYTIC_DIMENSIONS
+            if column in use_columns and column not in {"hora"}
+        },
+    )
     frame["data_inversa"] = pd.to_datetime(frame["data_inversa"], format="%d/%m/%Y", errors="coerce")
     frame["ano"] = frame["data_inversa"].dt.year.fillna(0).astype(int)
-    for column in ("mortos", "feridos"):
+    for column in (
+        "pessoas", "mortos", "feridos_leves", "feridos_graves", "ilesos",
+        "ignorados", "feridos", "veiculos",
+    ):
         frame[column] = pd.to_numeric(frame[column], errors="coerce").fillna(0).astype(int)
     for column in ("latitude", "longitude"):
         frame[column] = pd.to_numeric(frame[column].astype(str).str.strip().str.replace(",", "."), errors="coerce")
-    frame["uf"] = frame["uf"].fillna("").astype(str).str.upper()
-    frame["br"] = frame["br"].fillna("").map(normalize_br)
+    frame["uf"] = frame["uf"].astype("string").fillna("").str.upper()
+    frame["br"] = frame["br"].astype("string").fillna("").map(normalize_br)
     frame["km"] = pd.to_numeric(frame["km"], errors="coerce")
-    frame = frame[frame["latitude"].between(-35, 6) & frame["longitude"].between(-75, -34)].dropna(subset=["latitude", "longitude"])
+    for column in ANALYTIC_DIMENSIONS:
+        if column in {"uf", "br", "hora", "ano", "mes"}:
+            continue
+        frame[column] = frame[column].astype("string").fillna("Não informado").astype("category")
+    frame["mes"] = frame["data_inversa"].dt.month.map(
+        lambda value: f"{int(value):02d}" if pd.notna(value) else "Não informado"
+    )
+    frame["hora"] = (
+        pd.to_numeric(frame["horario"].astype(str).str[:2], errors="coerce")
+        .map(lambda value: f"{int(value):02d}:00" if pd.notna(value) and 0 <= value <= 23 else "Não informado")
+    )
+    map_frame = frame[
+        frame["latitude"].between(-35, 6) & frame["longitude"].between(-75, -34)
+    ].dropna(subset=["latitude", "longitude"])
 
     OUT.mkdir(parents=True, exist_ok=True)
     maps_dir = OUT / "maps"
@@ -243,16 +526,26 @@ def main():
         key = filter_key(year, state)
         summaries[key] = make_entry(selected, previous)
 
-        map_rows = selected.dropna(subset=["latitude", "longitude"])
+        map_selected = map_frame
+        if year:
+            map_selected = map_selected[map_selected["ano"] == year]
+        if state:
+            map_selected = map_selected[map_selected["uf"] == state]
+        map_rows = map_selected[
+            [
+                "latitude", "longitude", "municipio", "uf", "causa_acidente",
+                "classificacao_acidente", "mortos", "feridos", "data_inversa", "horario",
+            ]
+        ].dropna(subset=["latitude", "longitude"]).copy()
         limit = args.map_all_limit if key == "all" else args.map_filter_limit
         if len(map_rows) > limit:
             map_rows = map_rows.sample(limit, random_state=42)
-        map_rows = map_rows.copy()
         map_rows["data"] = map_rows["data_inversa"].dt.strftime("%d/%m/%Y").fillna("—")
         map_rows = map_rows[[
             "latitude", "longitude", "municipio", "uf", "causa_acidente",
             "classificacao_acidente", "mortos", "feridos", "data", "horario",
-        ]].fillna("—")
+        ]].astype(object)
+        map_rows = map_rows.where(pd.notna(map_rows), "—")
         (maps_dir / f"{key}.json").write_text(
             map_rows.to_json(orient="records", force_ascii=False), encoding="utf-8"
         )
@@ -262,7 +555,8 @@ def main():
         table_rows = table_rows[[
             "data_inversa", "uf", "municipio", "causa_acidente", "tipo_acidente",
             "classificacao_acidente", "mortos", "feridos", "horario",
-        ]].fillna("—")
+        ]].astype(object)
+        table_rows = table_rows.where(pd.notna(table_rows), "—")
         (tables_dir / f"{key}.json").write_text(
             table_rows.to_json(orient="records", force_ascii=False), encoding="utf-8"
         )
@@ -270,20 +564,30 @@ def main():
     (OUT / "summary.json").write_text(
         json.dumps(summaries, ensure_ascii=False, separators=(",", ":")), encoding="utf-8"
     )
+    write_analytics(frame, OUT, filter_sets)
+    record_manifest = write_record_assets(csv_path, OUT)
+    print(
+        f"Base completa: {record_manifest['total_registros']:,} registros em "
+        f"{len(record_manifest['particoes']):,} partições de JSON."
+    )
     road_groups = download_road_geometries(OUT) if not args.skip_roads else {}
     accidents_dir = OUT / "roads" / "accidents"
     accidents_dir.mkdir(parents=True, exist_ok=True)
-    route_points = frame[frame["br"].ne("")].copy()
+    route_points = map_frame[map_frame["br"].ne("")].copy()
     route_points["data"] = route_points["data_inversa"].dt.strftime("%d/%m/%Y").fillna("—")
     fields = ["latitude", "longitude", "uf", "municipio", "data", "horario", "causa_acidente", "classificacao_acidente", "mortos", "feridos", "km", "ano"]
     for br, rows in route_points.groupby("br", sort=True):
-        rows = rows[fields].copy().fillna("—")
+        rows = rows[fields].copy().astype(object)
+        rows = rows.where(pd.notna(rows), "—")
         (accidents_dir / f"br_{br}.json").write_text(rows.to_json(orient="values", force_ascii=False), encoding="utf-8")
     routes = sorted(route_points["br"].unique())
     (OUT / "roads" / "accident_manifest.json").write_text(
         json.dumps(routes, ensure_ascii=False, separators=(",", ":")), encoding="utf-8"
     )
-    print(f"Dados criados em {OUT}; {len(frame):,} acidentes válidos; {len(summaries)} filtros preparados.")
+    print(
+        f"Dados criados em {OUT}; {len(frame):,} acidentes na base e "
+        f"{len(map_frame):,} com coordenadas válidas; {len(summaries)} filtros preparados."
+    )
     print(f"{len(routes)} BRs com acidentes; {len(road_groups)} BRs com geometrias oficiais.")
 
 

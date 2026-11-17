@@ -5,7 +5,10 @@ from collections.abc import Callable, Mapping
 from typing import cast
 
 from analyst_queries import (
+    ANALYTIC_DIMENSIONS,
+    DISTRIBUTION_METRICS,
     METRICS,
+    DistributionLoader,
     QueryDataError,
     QueryValidationError,
     SOURCE,
@@ -76,11 +79,36 @@ _TOOL_DEFINITIONS = [
             "type": "object",
             "properties": {
                 "uf": {"type": "string", "enum": _STATE_ENUM},
-                "metrica": {"type": "string", "enum": ["acidentes", "mortes"]},
+                "metrica": {"type": "string", "enum": sorted(METRICS)},
                 "ano_inicio": {"type": "integer", "minimum": 2017, "maximum": 2024},
                 "ano_fim": {"type": "integer", "minimum": 2017, "maximum": 2024},
             },
             "required": ["metrica"],
+        },
+    },
+    {
+        "name": "consultar_distribuicao",
+        "description": (
+            "Consulta a distribuição histórica por condição meteorológica, causa, tipo, "
+            "município, BR, hora e outras categorias disponíveis no painel."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "ano": {"type": "integer", "minimum": 2017, "maximum": 2024},
+                "uf": {"type": "string", "enum": _STATE_ENUM},
+                "dimensao": {
+                    "type": "string",
+                    "enum": sorted(ANALYTIC_DIMENSIONS),
+                },
+                "metrica": {
+                    "type": "string",
+                    "enum": sorted(DISTRIBUTION_METRICS),
+                },
+                "pagina": {"type": "integer", "minimum": 1},
+                "por_pagina": {"type": "integer", "minimum": 1, "maximum": 10},
+            },
+            "required": ["dimensao", "metrica"],
         },
     },
     {
@@ -111,7 +139,9 @@ _SYSTEM_PROMPT = (
     "Você classifica perguntas sobre um painel de acidentes da PRF no Brasil, "
     "com dados de 2017 a 2024. Selecione exatamente uma ferramenta. "
     "Extraia somente filtros explicitamente pedidos; nunca invente um ano ou UF. "
-    "Use consultar_serie apenas para acidentes ou mortes. "
+    "Use consultar_serie para séries anuais das métricas disponíveis. "
+    "Use consultar_distribuicao para comparar categorias, inclusive condições meteorológicas. "
+    "Contagens históricas não demonstram causalidade nem justificam alertas operacionais. "
     "Use recusar_pergunta para previsões futuras, risco sem denominador de exposição, "
     "ou perguntas sem suporte nos dados. Não calcule nem escreva respostas."
 )
@@ -160,6 +190,7 @@ def analyze_question(
     question: str,
     summaries: Mapping[str, object],
     infer: Callable[[dict[str, object]], object],
+    distribution_loader: DistributionLoader | None = None,
 ) -> dict[str, object]:
     options = build_inference_options(question)
     tool_name, arguments = _parse_tool_selection(infer(options))
@@ -173,11 +204,20 @@ def analyze_question(
 
     if tool_name not in _TOOLS_BY_NAME:
         raise AnalystAIError("Workers AI selecionou uma operação desconhecida.")
+    if tool_name == "consultar_distribuicao" and "por_pagina" in arguments:
+        page_size = arguments["por_pagina"]
+        if (
+            isinstance(page_size, bool)
+            or not isinstance(page_size, int)
+            or not 1 <= page_size <= 10
+        ):
+            raise AnalystAIError("Workers AI retornou um tamanho de página inválido.")
 
     try:
         result = execute_query(
             summaries,
             {"operacao": tool_name, **arguments},
+            distribution_loader=distribution_loader,
         )
     except QueryValidationError:
         return _refusal("dados_insuficientes")
@@ -248,6 +288,12 @@ def _format_answer(
             "acidentes": "acidentes",
             "mortes": "mortes",
             "feridos": "feridos",
+            "feridos_leves": "feridos leves",
+            "feridos_graves": "feridos graves",
+            "pessoas": "pessoas envolvidas",
+            "ilesos": "ilesos",
+            "ignorados": "registros ignorados",
+            "veiculos": "veículos envolvidos",
         }
         values = [
             f"{_format_number(value)} {labels[key]}"
@@ -260,9 +306,17 @@ def _format_answer(
         comparison_year = filter_values.get("ano")
         comparison_period = _period_text(comparison_year)
         metric = filter_values.get("metrica")
-        metric_label = {"acidentes": "acidentes", "mortes": "mortes", "feridos": "feridos"}.get(
-            metric, "registros"
-        )
+        metric_label = {
+            "acidentes": "acidentes",
+            "mortes": "mortes",
+            "feridos": "feridos",
+            "feridos_leves": "feridos leves",
+            "feridos_graves": "feridos graves",
+            "pessoas": "pessoas envolvidas",
+            "ilesos": "ilesos",
+            "ignorados": "registros ignorados",
+            "veiculos": "veículos envolvidos",
+        }.get(metric, "registros")
         values = [
             f"{row['uf']} registrou {_format_number(row['valor'])} {metric_label}"
             for item in result
@@ -284,7 +338,17 @@ def _format_answer(
 
     if operation == "consultar_serie" and isinstance(result, list):
         metric = filter_values.get("metrica")
-        metric_label = {"acidentes": "acidentes", "mortes": "mortes"}.get(metric, "registros")
+        metric_label = {
+            "acidentes": "acidentes",
+            "mortes": "mortes",
+            "feridos": "feridos",
+            "feridos_leves": "feridos leves",
+            "feridos_graves": "feridos graves",
+            "pessoas": "pessoas envolvidas",
+            "ilesos": "ilesos",
+            "ignorados": "registros ignorados",
+            "veiculos": "veículos envolvidos",
+        }.get(metric, "registros")
         points = [
             f"{point['ano']}: {_format_number(point['valor'])}"
             for item in result
@@ -293,6 +357,39 @@ def _format_answer(
             if isinstance(point.get("ano"), int) and isinstance(point.get("valor"), int)
         ]
         return f"Série anual de {metric_label} no recorte {period}: " + "; ".join(points) + "."
+
+    if operation == "consultar_distribuicao" and isinstance(result, list):
+        metric = filter_values.get("metrica")
+        dimension = filter_values.get("dimensao")
+        metric_label = {
+            "acidentes": "acidentes",
+            "mortes": "mortes",
+            "feridos": "feridos",
+            "feridos_leves": "feridos leves",
+            "feridos_graves": "feridos graves",
+            "pessoas": "pessoas",
+            "ilesos": "ilesos",
+            "ignorados": "registros ignorados",
+            "veiculos": "veículos envolvidos",
+        }.get(metric, "registros")
+        dimension_label = ANALYTIC_DIMENSIONS.get(dimension, "categoria")
+        values = [
+            f"{row['valor']}: {_format_number(row[metric])} {metric_label}"
+            for item in result
+            if isinstance(item, Mapping)
+            for row in [cast(Mapping[str, object], item)]
+            if isinstance(row.get("valor"), str) and isinstance(row.get(metric), int)
+        ]
+        answer = (
+            f"No recorte {period}, as categorias de {dimension_label} com mais "
+            f"{metric_label} foram: " + "; ".join(values) + "."
+        )
+        if dimension == "condicao_metereologica":
+            answer += (
+                " São contagens históricas; não demonstram causalidade nem constituem "
+                "alerta operacional."
+            )
+        return answer
 
     raise AnalystAIError("Não foi possível compor a resposta da consulta.")
 

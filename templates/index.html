@@ -165,6 +165,115 @@
                 </div>
                 </div>
 
+                <section class="chart-container full-width data-explorer" aria-labelledby="distribution-title">
+                    <h3 class="chart-title" id="distribution-title">Explorar as dimensões da base</h3>
+                    <p class="explorer-description">
+                        Distribuições calculadas sobre todos os registros da base. As contagens são históricas
+                        e não demonstram causalidade nem medem risco.
+                    </p>
+                    <div class="explorer-controls">
+                        <label for="distribution-dimension">Agrupar por</label>
+                        <select id="distribution-dimension" class="custom-select">
+                            <option value="ano">Ano</option>
+                            <option value="mes">Mês</option>
+                            <option value="condicao_metereologica">Condição meteorológica</option>
+                            <option value="dia_semana">Dia da semana</option>
+                            <option value="fase_dia">Fase do dia</option>
+                            <option value="hora">Hora do dia</option>
+                            <option value="sentido_via">Sentido da via</option>
+                            <option value="tipo_pista">Tipo de pista</option>
+                            <option value="tracado_via">Traçado da via</option>
+                            <option value="uso_solo">Uso do solo</option>
+                            <option value="causa_acidente">Causa registrada</option>
+                            <option value="tipo_acidente">Tipo de acidente</option>
+                            <option value="classificacao_acidente">Classificação do acidente</option>
+                            <option value="uf">UF</option>
+                            <option value="br">BR</option>
+                            <option value="municipio">Município</option>
+                            <option value="regional">Regional</option>
+                            <option value="delegacia">Delegacia</option>
+                            <option value="uop">Unidade operacional</option>
+                        </select>
+                        <label for="distribution-metric">Ordenar por</label>
+                        <select id="distribution-metric" class="custom-select">
+                            <option value="acidentes">Acidentes</option>
+                            <option value="mortes">Mortes</option>
+                            <option value="feridos">Feridos</option>
+                            <option value="feridos_leves">Feridos leves</option>
+                            <option value="feridos_graves">Feridos graves</option>
+                            <option value="pessoas">Pessoas envolvidas</option>
+                            <option value="ilesos">Ilesos</option>
+                            <option value="ignorados">Ignorados</option>
+                            <option value="veiculos">Veículos envolvidos</option>
+                        </select>
+                    </div>
+                    <p id="distribution-status" class="explorer-status" role="status" aria-live="polite">
+                        Carregando distribuições...
+                    </p>
+                    <div class="data-table-scroll">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Categoria</th>
+                                    <th>Acidentes</th>
+                                    <th>Mortes</th>
+                                    <th>Feridos</th>
+                                    <th>Feridos leves</th>
+                                    <th>Feridos graves</th>
+                                    <th>Pessoas</th>
+                                    <th>Ilesos</th>
+                                    <th>Ignorados</th>
+                                    <th>Veículos</th>
+                                </tr>
+                            </thead>
+                            <tbody id="distribution-table-body"></tbody>
+                        </table>
+                    </div>
+                    <div class="explorer-pagination">
+                        <button id="distribution-previous" type="button" disabled>Anterior</button>
+                        <span id="distribution-page-status"></span>
+                        <button id="distribution-next" type="button" disabled>Próxima</button>
+                    </div>
+                </section>
+
+                <section class="chart-container full-width data-explorer" aria-labelledby="records-title">
+                    <h3 class="chart-title" id="records-title">Registros completos da PRF</h3>
+                    <p class="explorer-description">
+                        Consulte os registros por ano e UF usando os filtros globais. Cada linha mantém os 30 campos
+                        do CSV; abra “Todos os campos” para ver os detalhes. O mapa mostra apenas registros com
+                        coordenadas válidas.
+                    </p>
+                    <p id="records-status" class="explorer-status" role="status" aria-live="polite">
+                        Carregando registros...
+                    </p>
+                    <div class="data-table-scroll">
+                        <table class="data-table records-table">
+                            <thead>
+                                <tr>
+                                    <th>Data</th>
+                                    <th>Horário</th>
+                                    <th>UF</th>
+                                    <th>BR</th>
+                                    <th>Município</th>
+                                    <th>Condição meteorológica</th>
+                                    <th>Causa registrada</th>
+                                    <th>Tipo de acidente</th>
+                                    <th>Classificação</th>
+                                    <th>Mortos</th>
+                                    <th>Feridos</th>
+                                    <th>Detalhes</th>
+                                </tr>
+                            </thead>
+                            <tbody id="records-table-body"></tbody>
+                        </table>
+                    </div>
+                    <div class="explorer-pagination">
+                        <button id="records-previous" type="button" disabled>Anterior</button>
+                        <span id="records-page-status"></span>
+                        <button id="records-next" type="button" disabled>Próxima</button>
+                    </div>
+                </section>
+
                 <section class="chart-container full-width analyst-container" aria-labelledby="analyst-title">
                     <h3 class="chart-title" id="analyst-title">Analista de dados</h3>
                     <p class="analyst-description">

@@ -1,13 +1,19 @@
 import json
+import sys
 import unittest
 from pathlib import Path
 
-from src.analyst_queries import SOURCE, execute_query
-
-
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "src"))
+
+from analyst_queries import SOURCE, execute_query
+from record_queries import query_records
+
+
 FIXTURE_PATH = ROOT / "tests" / "fixtures" / "analyst_questions.json"
 SUMMARY_PATH = ROOT / "public" / "data" / "summary.json"
+RECORD_MANIFEST_PATH = ROOT / "public" / "data" / "records" / "manifest.json"
+ANALYTICS_DIR = ROOT / "public" / "data" / "analytics"
 
 
 class AnalystReferenceCasesTests(unittest.TestCase):
@@ -37,11 +43,36 @@ class AnalystReferenceCasesTests(unittest.TestCase):
                         "operacao": expected["operation"],
                         **expected["parameters"],
                     },
+                    distribution_loader=self._load_distribution,
                 )
 
                 self.assertEqual(result["operacao"], expected["operation"])
                 self.assertEqual(result["resultado"], expected["result"])
                 self.assertEqual(result["fonte"], SOURCE)
+
+    def test_summaries_analytics_and_record_manifest_cover_all_source_rows(self):
+        manifest = json.loads(RECORD_MANIFEST_PATH.read_text(encoding="utf-8"))
+        analytics = json.loads((ANALYTICS_DIR / "all.json").read_text(encoding="utf-8"))
+        weather = analytics["dimensoes"]["condicao_metereologica"]
+        stats = self.summaries["all"]["stats_gerais"]
+        record_page = query_records(
+            manifest,
+            None,
+            None,
+            1,
+            1,
+            lambda path: json.loads(
+                (RECORD_MANIFEST_PATH.parent / path).read_text(encoding="utf-8")
+            ),
+        )
+
+        self.assertEqual(manifest["total_registros"], 547347)
+        self.assertEqual(stats["total_acidentes"], manifest["total_registros"])
+        self.assertEqual(analytics["total_registros"], manifest["total_registros"])
+        self.assertEqual(sum(row["acidentes"] for row in weather), manifest["total_registros"])
+        self.assertEqual(sum(row["mortos"] for row in weather), stats["total_mortos"])
+        self.assertEqual(len(record_page["registros"]), 1)
+        self.assertEqual(len(record_page["registros"][0]), 30)
 
     def test_out_of_scope_questions_have_explicit_abstention_reasons(self):
         unsupported_cases = [
@@ -60,6 +91,17 @@ class AnalystReferenceCasesTests(unittest.TestCase):
                     expected.get("reason"),
                 )
                 self.assertTrue(expected.get("reason"))
+
+    @staticmethod
+    def _load_distribution(year, state, dimension):
+        parts = []
+        if year is not None:
+            parts.append(f"year_{year}")
+        if state is not None:
+            parts.append(f"uf_{state}")
+        key = "_".join(parts) or "all"
+        analytics = json.loads((ANALYTICS_DIR / f"{key}.json").read_text(encoding="utf-8"))
+        return analytics["dimensoes"][dimension]
 
 
 if __name__ == "__main__":
