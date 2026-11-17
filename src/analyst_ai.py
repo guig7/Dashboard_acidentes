@@ -89,8 +89,10 @@ _TOOL_DEFINITIONS = [
     {
         "name": "consultar_distribuicao",
         "description": (
-            "Consulta a distribuição histórica por condição meteorológica, causa, tipo, "
-            "município, BR, hora e outras categorias disponíveis no painel."
+            "Consulta distribuições históricas por categorias, inclusive UF/estado. "
+            "Use quando perguntarem qual categoria tem mais ou menos acidentes, mortes "
+            "ou feridos. Para saber qual estado teve mais acidentes em um ano, use "
+            "dimensao='uf', metrica='acidentes' e por_pagina=1."
         ),
         "parameters": {
             "type": "object",
@@ -140,7 +142,11 @@ _SYSTEM_PROMPT = (
     "com dados de 2017 a 2024. Selecione exatamente uma ferramenta. "
     "Extraia somente filtros explicitamente pedidos; nunca invente um ano ou UF. "
     "Use consultar_serie para séries anuais das métricas disponíveis. "
-    "Use consultar_distribuicao para comparar categorias, inclusive condições meteorológicas. "
+    "Use consultar_distribuicao para comparar categorias, inclusive condições meteorológicas "
+    "e UFs. Se perguntarem qual estado/UF teve mais acidentes, mortes ou feridos em um ano, "
+    "use dimensao='uf' e por_pagina=1; por exemplo, 'Qual o estado com mais acidentes em "
+    "2020?' corresponde a ano=2020, dimensao='uf', metrica='acidentes', por_pagina=1. "
+    "Não recuse essas perguntas por falta de dados: há distribuições por UF preparadas. "
     "Contagens históricas não demonstram causalidade nem justificam alertas operacionais. "
     "Use recusar_pergunta para previsões futuras, risco sem denominador de exposição, "
     "ou perguntas sem suporte nos dados. Não calcule nem escreva respostas."
@@ -380,6 +386,19 @@ def _format_answer(
             for row in [cast(Mapping[str, object], item)]
             if isinstance(row.get("valor"), str) and isinstance(row.get(metric), int)
         ]
+        if dimension == "uf":
+            if not values:
+                return f"Não encontrei dados de {metric_label} por estado no recorte {period}."
+            if len(values) == 1:
+                return (
+                    f"No recorte {period}, o estado com mais {metric_label} foi "
+                    f"{values[0]}."
+                )
+            return (
+                f"No recorte {period}, os estados com mais {metric_label} foram: "
+                + "; ".join(values)
+                + "."
+            )
         answer = (
             f"No recorte {period}, as categorias de {dimension_label} com mais "
             f"{metric_label} foram: " + "; ".join(values) + "."

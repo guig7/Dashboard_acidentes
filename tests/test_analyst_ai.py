@@ -72,6 +72,8 @@ class AnalystAITests(unittest.TestCase):
                     self.assertEqual(result["resultado"], expected["result"])
                     self.assertEqual(result["fonte"], SOURCE)
                     self.assertTrue(result["resposta"])
+                    if "answer_contains" in expected:
+                        self.assertIn(expected["answer_contains"], result["resposta"])
                 else:
                     self.assertEqual(result["status"], "recusada")
                     self.assertEqual(result["motivo"], expected["reason"])

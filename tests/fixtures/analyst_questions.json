@@ -18,6 +18,35 @@
       }
     },
     {
+      "id": "estado-com-mais-acidentes-2020",
+      "question": "Qual o estado com mais acidentes em 2020?",
+      "expected": {
+        "supported": true,
+        "operation": "consultar_distribuicao",
+        "parameters": {
+          "ano": 2020,
+          "dimensao": "uf",
+          "metrica": "acidentes",
+          "por_pagina": 1
+        },
+        "result": [
+          {
+            "valor": "MG",
+            "acidentes": 3322,
+            "mortes": 306,
+            "feridos": 4209,
+            "feridos_leves": 3212,
+            "feridos_graves": 997,
+            "pessoas": 8675,
+            "ilesos": 3032,
+            "ignorados": 1406,
+            "veiculos": 6399
+          }
+        ],
+        "answer_contains": "o estado com mais acidentes foi MG: 3.322 acidentes"
+      }
+    },
+    {
       "id": "mortes-ba-pe-2023",
       "question": "Compare as mortes em BA e PE em 2023.",
       "expected": {
