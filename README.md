@@ -84,7 +84,7 @@ As rotas `/api/*` fornecem os dados consumidos pela interface. As rotas de resum
 | `/api/registros` | Registros completos paginados, com todos os campos do CSV |
 | `POST /api/analista/consulta` | Consultas determinísticas; não chama um modelo de IA |
 | `GET /api/analista/status` | Informa se a IA e o limitador estão habilitados e configurados |
-| `POST /api/analista/perguntar` | Interpreta uma pergunta com Workers AI e executa somente uma consulta determinística permitida |
+| `POST /api/analista/perguntar` | Interpreta uma pergunta com Workers AI e executa até cinco consultas determinísticas permitidas |
 
 O endpoint de consulta recebe um objeto JSON com uma operação e seus parâmetros. Operações disponíveis:
 
@@ -123,9 +123,9 @@ Exemplo de comparação:
 
 O endpoint valida a consulta e retorna os valores estruturados com filtros e fonte. Ele não interpreta linguagem natural. As distribuições e séries são calculadas de forma determinística a partir dos dados preparados, sem SQL arbitrário.
 
-O endpoint de linguagem natural recebe `{"pergunta":"Quantos acidentes foram registrados em 2022?"}`. A resposta inclui o texto montado a partir dos resultados, a operação, os filtros e a fonte; o modelo não calcula os números nem fornece texto livre ao usuário. Ele também pode consultar distribuições históricas, inclusive de condições meteorológicas. Essas contagens não demonstram causalidade, não medem risco sem exposição ao tráfego e não geram previsão nem alerta operacional. Perguntas fora do escopo devem ser recusadas.
+O endpoint de linguagem natural recebe `{"pergunta":"Quantos acidentes foram registrados em 2022?"}`. Para perguntas compostas, o sistema pode executar até cinco consultas determinísticas permitidas. O modelo interpreta a pergunta e sintetiza uma resposta somente a partir dos resultados retornados; ele não calcula os números. A resposta também inclui as consultas, os filtros e a fonte em campos separados. A fonte não aparece no texto principal e fica disponível nos detalhes da consulta na interface. O analista também pode consultar distribuições históricas, inclusive de condições meteorológicas. Essas contagens não demonstram causalidade, não medem risco sem exposição ao tráfego e não geram previsão nem alerta operacional. Perguntas fora do escopo devem ser recusadas.
 
-Workers AI usa o binding `AI`, com o modelo `@cf/zai-org/glm-4.7-flash`. O recurso está habilitado em `wrangler.jsonc` (`ANALYST_AI_ENABLED: "true"`). A pergunta é limitada a 500 caracteres e a geração a 160 tokens. Não há integração com AI Gateway nem armazenamento próprio das perguntas.
+Workers AI usa o binding `AI`, com o modelo `@cf/zai-org/glm-4.7-flash`. O recurso está habilitado em `wrangler.jsonc` (`ANALYST_AI_ENABLED: "true"`). A pergunta é limitada a 500 caracteres, o planejamento a 512 tokens e a síntese da resposta a 700 tokens. Não há integração com AI Gateway nem armazenamento próprio das perguntas.
 
 Workers Observability também está habilitado em `wrangler.jsonc`, com amostragem de 100%, para registrar invocações e exceções do Worker. O código não grava perguntas ou respostas em logs personalizados; os logs de invocação podem incluir metadados da requisição. A retenção e os limites dependem do plano da Cloudflare; consulte os [limites e preços de Workers Logs](https://developers.cloudflare.com/workers/observability/logs/workers-logs/).
 

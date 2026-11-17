@@ -63,6 +63,8 @@ class AnalystAITests(unittest.TestCase):
         self.assertEqual(context["pergunta"], "Quantos acidentes houve em 2022?")
         self.assertEqual(context["consultas"], consultations)
         self.assertIn("não invente valores", options["messages"][0]["content"])
+        self.assertNotIn("fonte", context)
+        self.assertIn("não cite a fonte", options["messages"][0]["content"])
 
     def test_reference_cases_flow_through_mocked_tool_calls(self):
         for case in self.fixture["cases"]:
@@ -103,10 +105,8 @@ class AnalystAITests(unittest.TestCase):
                     self.assertEqual(result["resultado"], expected["result"])
                     self.assertEqual(result["fonte"], SOURCE)
                     self.assertTrue(result["resposta"])
-                    self.assertEqual(
-                        result["resposta"],
-                        f"Resposta baseada nos dados consultados. Fonte: {SOURCE}",
-                    )
+                    self.assertEqual(result["resposta"], "Resposta baseada nos dados consultados.")
+                    self.assertNotIn(SOURCE, result["resposta"])
                 else:
                     self.assertEqual(result["status"], "recusada")
                     self.assertEqual(result["motivo"], expected["reason"])
@@ -143,8 +143,7 @@ class AnalystAITests(unittest.TestCase):
         }
         final_answer = (
             "Em 2023, MG teve 3.536 acidentes. A causa registrada mais frequente foi "
-            "Reação tardia ou ineficiente do condutor, com 3.930 acidentes. "
-            "Fonte: Dados PRF pré-processados do painel (2017–2024)."
+            "Reação tardia ou ineficiente do condutor, com 3.930 acidentes."
         )
         inference_calls = []
 
@@ -174,6 +173,8 @@ class AnalystAITests(unittest.TestCase):
         self.assertEqual(len(inference_calls), 2)
         self.assertEqual(result["status"], "respondida")
         self.assertEqual(result["resposta"], final_answer)
+        self.assertNotIn(SOURCE, result["resposta"])
+        self.assertEqual(result["fonte"], SOURCE)
         self.assertEqual(len(result["consultas"]), 2)
         self.assertEqual(result["consulta"][0]["operacao"], "consultar_distribuicao")
         self.assertEqual(result["consulta"][1]["operacao"], "listar_causas")
@@ -309,7 +310,7 @@ class AnalystAITests(unittest.TestCase):
                     "message": {
                         "content": (
                             "A condição mais frequente foi chuva, mas isso não demonstra "
-                            "causalidade. Fonte: " + SOURCE
+                            "causalidade."
                         ),
                     },
                 }],

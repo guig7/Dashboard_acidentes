@@ -173,7 +173,8 @@ _ANSWER_SYSTEM_PROMPT = (
     "afirmar causalidade. Contagens não são medidas de risco sem dados de exposição ao "
     "tráfego e não justificam alertas operacionais. Se algum ponto não estiver respondido "
     "pelos dados, diga isso claramente sem omitir os demais. Não mencione ferramentas ou "
-    "detalhes internos. Cite o recorte temporal e encerre com a fonte fornecida."
+    "detalhes internos. Cite o recorte temporal, mas não cite a fonte na resposta; ela "
+    "fica disponível separadamente nos detalhes da consulta."
 )
 
 
@@ -221,7 +222,7 @@ def build_answer_options(
     consultations: list[dict[str, object]],
 ) -> dict[str, object]:
     context = json.dumps(
-        {"pergunta": question, "consultas": consultations, "fonte": SOURCE},
+        {"pergunta": question, "consultas": consultations},
         ensure_ascii=False,
     )
     return {
@@ -279,8 +280,6 @@ def analyze_question(
 
     answer_response = infer(build_answer_options(question, consultations))
     answer = _parse_answer_text(answer_response)
-    if SOURCE.casefold() not in answer.casefold():
-        answer = f"{answer.rstrip()} Fonte: {SOURCE}"
 
     query_descriptions = [
         {"operacao": item["operacao"], "filtros": item["filtros"]}

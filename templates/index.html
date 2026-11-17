@@ -106,6 +106,38 @@
                 </div>
             </header>
 
+            <section class="chart-container full-width analyst-container" aria-labelledby="analyst-title">
+                <h3 class="chart-title" id="analyst-title">Analista de dados</h3>
+                <p class="analyst-description">
+                    Pergunte sobre os registros históricos de 2017 a 2024, inclusive várias questões
+                    na mesma pergunta. Informe ano e UF quando relevante; os filtros gerais do painel
+                    não alteram esta consulta. O analista não prevê acidentes nem calcula risco sem
+                    dados de exposição ao tráfego.
+                </p>
+                <form id="analyst-form" class="analyst-form">
+                    <label class="analyst-label" for="analyst-question">Sua pergunta</label>
+                    <textarea id="analyst-question" name="pergunta" maxlength="500" rows="3"
+                        placeholder="Ex.: Qual estado teve mais acidentes em 2023 e qual foi a causa registrada mais frequente?"
+                        aria-describedby="analyst-char-count" disabled required></textarea>
+                    <div class="analyst-form-footer">
+                        <span id="analyst-char-count" class="analyst-char-count">0/500</span>
+                        <button id="analyst-submit" class="analyst-submit" type="submit" disabled>
+                            Consultar
+                        </button>
+                    </div>
+                </form>
+                <p id="analyst-status" class="analyst-status" role="status" aria-live="polite">
+                    Verificando disponibilidade...
+                </p>
+                <div id="analyst-response" class="analyst-response" hidden>
+                    <p id="analyst-answer"></p>
+                    <details>
+                        <summary>Ver consultas, dados e fonte</summary>
+                        <pre id="analyst-result-data"></pre>
+                    </details>
+                </div>
+            </section>
+
             <div class="charts-grid">
 
                 <!-- Evolução Anual de Acidentes -->
@@ -149,6 +181,25 @@
                     <div class="chart-wrapper ranking-chart-wrapper">
                         <canvas id="rankingEstados"></canvas>
                     </div>
+                </div>
+
+                <!-- Mapa -->
+                <div class="chart-container full-width">
+                    <h3 class="chart-title">Mapa Geográfico de Acidentes</h3>
+                    <div class="map-toolbar">
+                        <label for="filter-br">Rodovia no mapa</label>
+                        <select id="filter-br" class="custom-select">
+                            <option value="">Escolha uma BR</option>
+                        </select>
+                        <span class="map-mode-label">Acidentes</span>
+                        <div class="map-mode-switch" role="group" aria-label="Exibição dos acidentes">
+                            <button type="button" data-map-mode="points" aria-pressed="true">Pontos</button>
+                            <button type="button" data-map-mode="heat" aria-pressed="false">Calor</button>
+                            <button type="button" data-map-mode="none" aria-pressed="false">Ocultar</button>
+                        </div>
+                        <span id="map-status" role="status">Selecione uma BR para ver o trajeto e seus acidentes.</span>
+                    </div>
+                    <div id="mapContainer"></div>
                 </div>
 
                 <!-- ── NOVO: Top Causas ── -->
@@ -273,57 +324,6 @@
                         <button id="records-next" type="button" disabled>Próxima</button>
                     </div>
                 </section>
-
-                <section class="chart-container full-width analyst-container" aria-labelledby="analyst-title">
-                    <h3 class="chart-title" id="analyst-title">Analista de dados</h3>
-                    <p class="analyst-description">
-                        Pergunte sobre os registros históricos de 2017 a 2024, inclusive várias questões
-                        na mesma pergunta. Informe ano e UF quando relevante; os filtros gerais do painel
-                        não alteram esta consulta. O analista não prevê acidentes nem calcula risco sem
-                        dados de exposição ao tráfego.
-                    </p>
-                    <form id="analyst-form" class="analyst-form">
-                        <label class="analyst-label" for="analyst-question">Sua pergunta</label>
-                        <textarea id="analyst-question" name="pergunta" maxlength="500" rows="3"
-                            placeholder="Ex.: Qual estado teve mais acidentes em 2023 e qual foi a causa registrada mais frequente?"
-                            aria-describedby="analyst-char-count" disabled required></textarea>
-                        <div class="analyst-form-footer">
-                            <span id="analyst-char-count" class="analyst-char-count">0/500</span>
-                            <button id="analyst-submit" class="analyst-submit" type="submit" disabled>
-                                Consultar
-                            </button>
-                        </div>
-                    </form>
-                    <p id="analyst-status" class="analyst-status" role="status" aria-live="polite">
-                        Verificando disponibilidade...
-                    </p>
-                    <div id="analyst-response" class="analyst-response" hidden>
-                        <p id="analyst-answer"></p>
-                        <details>
-                            <summary>Ver consultas, dados e fonte</summary>
-                            <pre id="analyst-result-data"></pre>
-                        </details>
-                    </div>
-                </section>
-
-                <!-- Mapa -->
-                <div class="chart-container full-width">
-                    <h3 class="chart-title">Mapa Geográfico de Acidentes</h3>
-                    <div class="map-toolbar">
-                        <label for="filter-br">Rodovia no mapa</label>
-                        <select id="filter-br" class="custom-select">
-                            <option value="">Escolha uma BR</option>
-                        </select>
-                        <span class="map-mode-label">Acidentes</span>
-                        <div class="map-mode-switch" role="group" aria-label="Exibição dos acidentes">
-                            <button type="button" data-map-mode="points" aria-pressed="true">Pontos</button>
-                            <button type="button" data-map-mode="heat" aria-pressed="false">Calor</button>
-                            <button type="button" data-map-mode="none" aria-pressed="false">Ocultar</button>
-                        </div>
-                        <span id="map-status" role="status">Selecione uma BR para ver o trajeto e seus acidentes.</span>
-                    </div>
-                    <div id="mapContainer"></div>
-                </div>
 
             </div>
         </main>

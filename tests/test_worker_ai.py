@@ -107,8 +107,7 @@ class WorkerAITests(unittest.TestCase):
                         "content": (
                             "Em 2023, MG teve 3.536 acidentes. A causa registrada mais "
                             "frequente foi Reação tardia ou ineficiente do condutor, "
-                            "com 3.930 acidentes. "
-                            "Fonte: Dados PRF pré-processados do painel (2017–2024)."
+                            "com 3.930 acidentes."
                         ),
                     },
                 }],
@@ -164,6 +163,8 @@ class WorkerAITests(unittest.TestCase):
         self.assertEqual(payload["resultado"][1][0]["causa"], "Reação tardia ou ineficiente do condutor")
         self.assertIn("MG teve 3.536 acidentes", payload["resposta"])
         self.assertIn("3.930 acidentes", payload["resposta"])
+        self.assertNotIn("Fonte:", payload["resposta"])
+        self.assertIn("Dados PRF pré-processados", payload["fonte"])
         self.assertEqual(len(ai_calls), 2)
 
 
