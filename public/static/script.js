@@ -33,6 +33,7 @@ let availableRoads      = new Set();
 let mapLoadSequence     = 0;
 let filterReloadTimer   = null;
 let renderedMapFilterState = null;
+let analystEnabled = false;
 const UF_IBGE_CODES = {
     AC: '12', AL: '27', AP: '16', AM: '13', BA: '29', CE: '23', DF: '53', ES: '32', GO: '52',
     MA: '21', MT: '51', MS: '50', MG: '31', PA: '15', PB: '25', PR: '41', PE: '26', PI: '22',
@@ -76,10 +77,104 @@ document.addEventListener('DOMContentLoaded', () => {
         button.addEventListener('click', () => setAccidentMode(button.dataset.mapMode));
     });
     carregarListaRodovias();
+    carregarStatusAnalista();
 });
 
 // ─── FORMATTERS ───────────────────────────────────────────────────────────────
 const formatNum = (n) => new Intl.NumberFormat('pt-BR').format(n);
+
+async function carregarStatusAnalista() {
+    const form = document.getElementById('analyst-form');
+    const question = document.getElementById('analyst-question');
+    const submit = document.getElementById('analyst-submit');
+    const status = document.getElementById('analyst-status');
+    const charCount = document.getElementById('analyst-char-count');
+    if (!form || !question || !submit || !status || !charCount) return;
+
+    question.addEventListener('input', () => {
+        charCount.textContent = `${question.value.length}/500`;
+    });
+    form.addEventListener('submit', enviarPerguntaAnalista);
+
+    try {
+        const response = await fetch('/api/analista/status');
+        const payload = await response.json();
+        if (!response.ok || typeof payload.habilitado !== 'boolean') {
+            throw new Error('Resposta inválida ao verificar a disponibilidade.');
+        }
+        if (!payload.habilitado) {
+            status.textContent = 'Recurso experimental desativado no momento.';
+            status.dataset.state = 'disabled';
+            return;
+        }
+
+        analystEnabled = true;
+        question.disabled = false;
+        submit.disabled = false;
+        status.textContent = 'Disponível. As respostas usam somente consultas verificáveis do painel.';
+        status.dataset.state = 'ready';
+    } catch (error) {
+        console.error('Falha ao verificar o analista de dados:', error);
+        status.textContent = 'Não foi possível verificar a disponibilidade do analista.';
+        status.dataset.state = 'error';
+    }
+}
+
+async function enviarPerguntaAnalista(event) {
+    event.preventDefault();
+    const question = document.getElementById('analyst-question');
+    const submit = document.getElementById('analyst-submit');
+    const status = document.getElementById('analyst-status');
+    const answer = document.getElementById('analyst-answer');
+    const resultData = document.getElementById('analyst-result-data');
+    const responseContainer = document.getElementById('analyst-response');
+    if (!analystEnabled || !question || !submit || !status || !answer || !resultData || !responseContainer) return;
+
+    const pergunta = question.value.trim();
+    if (!pergunta) return;
+
+    submit.disabled = true;
+    question.disabled = true;
+    responseContainer.hidden = true;
+    status.textContent = 'Consultando os dados...';
+    status.dataset.state = 'loading';
+
+    try {
+        const response = await fetch('/api/analista/perguntar', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ pergunta }),
+        });
+        const payload = await response.json().catch(() => null);
+        if (!response.ok) {
+            throw new Error(
+                payload && typeof payload.erro === 'string'
+                    ? payload.erro
+                    : 'Não foi possível concluir a consulta.'
+            );
+        }
+        if (!payload || typeof payload.resposta !== 'string' || typeof payload.fonte !== 'string') {
+            throw new Error('A API retornou uma resposta inválida.');
+        }
+
+        answer.textContent = payload.resposta;
+        resultData.textContent = JSON.stringify({
+            consulta: payload.consulta,
+            resultado: payload.resultado,
+            fonte: payload.fonte,
+        }, null, 2);
+        responseContainer.hidden = false;
+        status.textContent = 'Consulta concluída. Confira os dados e a fonte abaixo.';
+        status.dataset.state = 'ready';
+    } catch (error) {
+        console.error('Falha ao consultar o analista de dados:', error);
+        status.textContent = error.message || 'Não foi possível concluir a consulta.';
+        status.dataset.state = 'error';
+    } finally {
+        question.disabled = false;
+        submit.disabled = false;
+    }
+}
 
 // ─── CHART OPTIONS FACTORY ────────────────────────────────────────────────────
 function chartOptions(overrides = {}) {

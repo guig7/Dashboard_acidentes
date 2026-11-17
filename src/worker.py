@@ -3,9 +3,17 @@
 import json
 
 from flask import Flask, Response, abort, jsonify, request
-from pyodide.ffi import run_sync
+from js import Object
+from pyodide.ffi import run_sync, to_js, to_py
 from workers import wsgi
 
+from analyst_ai import (
+    MODEL_ID,
+    AnalystAIError,
+    analyze_question,
+    is_ai_enabled,
+    validate_question,
+)
 from analyst_queries import QueryDataError, QueryValidationError, execute_query
 
 app = Flask(__name__)
@@ -111,6 +119,60 @@ def consulta_analista():
     return jsonify(result)
 
 
+@app.get("/api/analista/status")
+def status_analista():
+    env = request.environ["workers.env"]
+    return jsonify({"habilitado": is_ai_enabled(env)})
+
+
+@app.post("/api/analista/perguntar")
+def perguntar_analista():
+    if not request.is_json:
+        abort(400, description="Envie a pergunta com Content-Type application/json.")
+    payload = request.get_json()
+    if not isinstance(payload, dict) or set(payload) != {"pergunta"}:
+        abort(400, description="O corpo deve conter somente o campo 'pergunta'.")
+    try:
+        question = validate_question(payload["pergunta"])
+    except QueryValidationError as error:
+        abort(400, description=str(error))
+
+    env = request.environ["workers.env"]
+    if getattr(env, "ANALYST_AI_ENABLED", "false") != "true":
+        abort(503, description="O analista com IA está desativado.")
+    ai_binding = getattr(env, "AI", None)
+    if ai_binding is None:
+        abort(503, description="Binding Workers AI não configurado.")
+    rate_limiter = getattr(env, "ANALYST_RATE_LIMITER", None)
+    if rate_limiter is None:
+        abort(503, description="Proteção contra excesso de chamadas não configurada.")
+
+    rate_limit_key = request.headers.get("CF-Connecting-IP") or "anonymous"
+    rate_limit_options = to_js(
+        {"key": rate_limit_key},
+        dict_converter=Object.fromEntries,
+    )
+    rate_limit_result = run_sync(rate_limiter.limit(rate_limit_options))
+    rate_limit_success = getattr(rate_limit_result, "success", None)
+    if rate_limit_success is None:
+        abort(503, description="Não foi possível verificar o limite de chamadas.")
+    if not bool(rate_limit_success):
+        abort(429, description="Limite de consultas atingido. Tente novamente em um minuto.")
+
+    def infer(options):
+        js_options = to_js(options, dict_converter=Object.fromEntries)
+        response = run_sync(ai_binding.run(MODEL_ID, js_options))
+        return to_py(response)
+
+    try:
+        result = analyze_question(question, load_summaries(), infer)
+    except AnalystAIError as error:
+        abort(502, description=str(error))
+    except QueryDataError as error:
+        abort(503, description=str(error))
+    return jsonify(result)
+
+
 @app.get("/api/mapa")
 def mapa_acidentes():
     key = filter_key()
@@ -138,6 +200,8 @@ def tabela_detalhada():
 
 
 @app.errorhandler(400)
+@app.errorhandler(429)
+@app.errorhandler(502)
 @app.errorhandler(404)
 @app.errorhandler(503)
 def json_error(error):

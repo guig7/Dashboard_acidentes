@@ -165,6 +165,37 @@
                 </div>
                 </div>
 
+                <section class="chart-container full-width analyst-container" aria-labelledby="analyst-title">
+                    <h3 class="chart-title" id="analyst-title">Analista de dados</h3>
+                    <p class="analyst-description">
+                        Pergunte sobre os registros históricos de 2017 a 2024. Informe ano e UF na pergunta;
+                        os filtros gerais do painel não alteram esta consulta. O analista não prevê acidentes
+                        nem calcula risco sem dados de exposição ao tráfego.
+                    </p>
+                    <form id="analyst-form" class="analyst-form">
+                        <label class="analyst-label" for="analyst-question">Sua pergunta</label>
+                        <textarea id="analyst-question" name="pergunta" maxlength="500" rows="3"
+                            placeholder="Ex.: Quantos acidentes foram registrados em 2022?"
+                            aria-describedby="analyst-char-count" disabled required></textarea>
+                        <div class="analyst-form-footer">
+                            <span id="analyst-char-count" class="analyst-char-count">0/500</span>
+                            <button id="analyst-submit" class="analyst-submit" type="submit" disabled>
+                                Consultar
+                            </button>
+                        </div>
+                    </form>
+                    <p id="analyst-status" class="analyst-status" role="status" aria-live="polite">
+                        Verificando disponibilidade...
+                    </p>
+                    <div id="analyst-response" class="analyst-response" hidden>
+                        <p id="analyst-answer"></p>
+                        <details>
+                            <summary>Ver consulta, dados e fonte</summary>
+                            <pre id="analyst-result-data"></pre>
+                        </details>
+                    </div>
+                </section>
+
                 <!-- Mapa -->
                 <div class="chart-container full-width">
                     <h3 class="chart-title">Mapa Geográfico de Acidentes</h3>

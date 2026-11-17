@@ -1,0 +1,141 @@
+{
+  "version": 1,
+  "description": "Perguntas de referência para consultas determinísticas; não avalia interpretação por LLM.",
+  "cases": [
+    {
+      "id": "total-acidentes-2022",
+      "question": "Quantos acidentes foram registrados em 2022?",
+      "expected": {
+        "supported": true,
+        "operation": "consultar_resumo",
+        "parameters": {
+          "ano": 2022,
+          "metrica": "acidentes"
+        },
+        "result": {
+          "acidentes": 25532
+        }
+      }
+    },
+    {
+      "id": "mortes-ba-pe-2023",
+      "question": "Compare as mortes em BA e PE em 2023.",
+      "expected": {
+        "supported": true,
+        "operation": "comparar_estados",
+        "parameters": {
+          "ano": 2023,
+          "ufs": ["BA", "PE"],
+          "metrica": "mortes"
+        },
+        "result": [
+          {"uf": "BA", "valor": 205},
+          {"uf": "PE", "valor": 107}
+        ]
+      }
+    },
+    {
+      "id": "causas-no-parana",
+      "question": "Quais foram as principais causas registradas no Paraná?",
+      "expected": {
+        "supported": true,
+        "operation": "listar_causas",
+        "parameters": {
+          "uf": "PR",
+          "limite": 2
+        },
+        "result": [
+          {
+            "causa": "Falta de Atenção à Condução",
+            "acidentes": 12872,
+            "mortes": 505,
+            "feridos": 13180,
+            "taxa_severidade": 3.92
+          },
+          {
+            "causa": "Velocidade Incompatível",
+            "acidentes": 7628,
+            "mortes": 647,
+            "feridos": 7721,
+            "taxa_severidade": 8.48
+          }
+        ]
+      }
+    },
+    {
+      "id": "serie-acidentes-go",
+      "question": "Como evoluiu o número de acidentes em Goiás entre 2022 e 2024?",
+      "expected": {
+        "supported": true,
+        "operation": "consultar_serie",
+        "parameters": {
+          "uf": "GO",
+          "metrica": "acidentes",
+          "ano_inicio": 2022,
+          "ano_fim": 2024
+        },
+        "result": [
+          {"ano": 2022, "valor": 1244},
+          {"ano": 2023, "valor": 1304},
+          {"ano": 2024, "valor": 1164}
+        ]
+      }
+    },
+    {
+      "id": "feridos-sp-2023",
+      "question": "Quantos feridos foram registrados em São Paulo em 2023?",
+      "expected": {
+        "supported": true,
+        "operation": "consultar_resumo",
+        "parameters": {
+          "ano": 2023,
+          "uf": "SP",
+          "metrica": "feridos"
+        },
+        "result": {
+          "feridos": 2020
+        }
+      }
+    },
+    {
+      "id": "resumo-geral-2017",
+      "question": "Quantos acidentes, mortes e feridos houve em 2017?",
+      "expected": {
+        "supported": true,
+        "operation": "consultar_resumo",
+        "parameters": {
+          "ano": 2017
+        },
+        "result": {
+          "acidentes": 35213,
+          "mortes": 2513,
+          "feridos": 33244
+        }
+      }
+    },
+    {
+      "id": "previsao-para-amanha",
+      "question": "Qual é o risco de acidente amanhã?",
+      "expected": {
+        "supported": false,
+        "operation": "recusar_pergunta",
+        "parameters": {
+          "motivo": "previsao_futura"
+        },
+        "reason": "previsao_futura"
+      }
+    },
+    {
+      "id": "risco-sem-exposicao",
+      "question": "Qual estado tem o maior risco de acidente por veículo?",
+      "expected": {
+        "supported": false,
+        "operation": "recusar_pergunta",
+        "parameters": {
+          "motivo": "sem_denominador_de_exposicao"
+        },
+        "reason": "sem_denominador_de_exposicao"
+      }
+    }
+  ]
+}

@@ -4,6 +4,22 @@
   "main": "src/worker.py",
   "compatibility_date": "2026-11-14",
   "compatibility_flags": ["python_workers"],
+  "ai": {
+    "binding": "AI"
+  },
+  "ratelimits": [
+    {
+      "name": "ANALYST_RATE_LIMITER",
+      "namespace_id": "783641092",
+      "simple": {
+        "limit": 5,
+        "period": 60
+      }
+    }
+  ],
+  "vars": {
+    "ANALYST_AI_ENABLED": "false"
+  },
   "assets": {
     "directory": "./public/",
     "binding": "ASSETS",

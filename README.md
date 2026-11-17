@@ -80,6 +80,8 @@ As rotas `/api/*` fornecem os dados consumidos pela interface. As rotas de resum
 | `/api/mapa` | Ocorrências para o mapa |
 | `/api/tabela_detalhada` | Linhas para a tabela detalhada |
 | `POST /api/analista/consulta` | Consultas determinísticas para o analista de dados; não chama um modelo de IA |
+| `GET /api/analista/status` | Informa se a IA e o limitador estão habilitados e configurados |
+| `POST /api/analista/perguntar` | Interpreta uma pergunta com Workers AI e executa somente uma consulta determinística permitida |
 
 O endpoint de consulta recebe um objeto JSON com uma operação e seus parâmetros. Operações disponíveis:
 
@@ -100,6 +102,20 @@ Exemplo de comparação:
 ```
 
 O endpoint valida a consulta e retorna os valores estruturados com filtros e fonte. Ele não interpreta linguagem natural; séries anuais de feridos ainda não estão nos dados preparados.
+
+O endpoint de linguagem natural recebe `{"pergunta":"Quantos acidentes foram registrados em 2022?"}`. A resposta inclui o texto montado a partir dos resultados, a operação, os filtros e a fonte; o modelo não calcula os números nem fornece texto livre ao usuário. Perguntas fora do escopo devem ser recusadas.
+
+Workers AI usa o binding `AI`, com o modelo `@cf/zai-org/glm-4.7-flash`. O recurso fica desativado por padrão em `wrangler.jsonc` (`ANALYST_AI_ENABLED: "false"`); chamadas reais só ocorrem depois de habilitá-lo. A pergunta é limitada a 500 caracteres e a geração a 160 tokens. Não há integração com AI Gateway nem armazenamento próprio das perguntas.
+
+O dashboard exibe um formulário para perguntas e consulta `/api/analista/status` antes de habilitá-lo. Quando a IA, o binding ou o limitador de chamadas estiverem desativados ou ausentes, o formulário permanece desabilitado. A consulta em linguagem natural usa somente os filtros escritos na pergunta; os filtros gerais do dashboard não são aplicados.
+
+O [Workers AI oferece 10.000 Neurons gratuitos por dia](https://developers.cloudflare.com/workers-ai/platform/pricing/). Para `@cf/zai-org/glm-4.7-flash`, a tabela atual informa 5.500 Neurons por milhão de tokens de entrada e 36.400 por milhão de tokens de saída; os 160 tokens máximos de saída representam até 5,824 Neurons por resposta, além do custo de entrada. No Workers Paid, o excedente custa US$ 0,011 por 1.000 Neurons; no Workers Free, operações após a cota diária falham. Chamadas locais de inferência também consomem a cota.
+
+O endpoint de perguntas usa o [Rate Limiting API do Workers](https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/), configurado para 5 chamadas por minuto por IP. O limite é aproximado e aplicado separadamente por localidade Cloudflare; não é um teto diário ou global de gastos, e usuários atrás do mesmo IP podem compartilhar o limite. Não habilite a IA em uma conta paga contando com esse limitador como proteção de orçamento. Um teto rígido de consumo exigiria controle global persistente, ainda não implementado. O recurso continua desligado por padrão enquanto essa proteção e a cota da conta não forem suficientes para o uso pretendido.
+
+O `namespace_id` do limitador em `wrangler.jsonc` precisa ser único na conta Cloudflare; se já estiver em uso por outro Worker, escolha outro número inteiro antes de publicar.
+
+O conjunto de perguntas de referência em `tests/fixtures/analyst_questions.json` registra consultas esperadas, resultados e exemplos fora do escopo, como previsões futuras e comparações de risco sem dados de exposição. Os testes verificam o contrato das consultas determinísticas com os dados preparados; ainda não medem seleção de ferramentas ou extração de filtros por um modelo de linguagem.
 
 O período coberto é de 2017 a 2024. Uma UF deve ser informada pela sigla oficial, como `SP` ou `BA`.
 
