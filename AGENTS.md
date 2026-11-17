@@ -1,66 +1,56 @@
 # Contexto do projeto para assistentes de IA
 
-Leia este arquivo e o `README.md` antes de propor ou alterar o projeto. Converse com o usuário em português do Brasil. Preserve as decisões e funcionalidades descritas aqui; confirme o código atual antes de assumir que uma ideia já está implementada.
+Leia este arquivo e o README.md antes de alterar o projeto. Converse em português do Brasil. O código no GitHub/main já inclui um analista com Workers AI; não descreva esse recurso como apenas planejado. Confirme sempre a implementação e o estado atual da branch antes de editar.
 
-## Objetivo e público
+## Produto
 
-O projeto é um dashboard interativo de acidentes em rodovias federais brasileiras, baseado em registros da PRF de 2017 a 2024. O foco é permitir exploração visual por ano, UF e rodovia, sem apresentar os dados como prova de causalidade ou como medida de risco sem denominador de exposição ao tráfego.
+Dashboard interativo de acidentes em rodovias federais do Brasil, com registros PRF 2017–2024. Permite análise descritiva por ano, UF, rodovia, horário, clima, causa e outras dimensões.
 
-- Site publicado: https://dashboard-acidentes-prf.guisoaresg7.workers.dev/
+- Site: https://dashboard-acidentes-prf.guisoaresg7.workers.dev/
 - Repositório: https://github.com/guig7/Dashboard_acidentes
-- Licença: MIT.
+- Licença MIT.
 
-## Arquitetura atual
+Não afirmar causalidade, previsão de acidentes ou risco por rodovia/grupo sem dados de exposição ao tráfego. O mapa pode exibir amostras limitadas, não todos os registros.
 
-- A aplicação é servida pelo Cloudflare Workers, com um Worker Python/Flask para rotas `/api/*` e Workers Static Assets para a interface e arquivos preparados em `public/`.
-- O Worker lê JSON/GeoJSON por meio do binding `ASSETS`; ele não carrega nem processa o CSV bruto em cada acesso.
-- `tools/build_data.py` prepara os dados antes da publicação. As fontes incluem o dataset PRF no Kaggle, geometrias de rodovias do DNIT/Infra S.A. e limites geográficos do IBGE.
-- Os JSONs de `public/data/` são recursos públicos necessários ao site. Nunca colocar segredos ou dados privados nessa pasta.
+## Arquitetura
 
-## Experiência existente
+- Cloudflare Worker Python/Flask em src/worker.py processa /api/* e lê Static Assets pelo binding ASSETS.
+- A interface estática e os JSON/GeoJSON públicos são servidos de public/.
+- tools/build_data.py lê e valida o CSV fora das requisições do site e gera summary, analytics, partitions de registros, mapas, tabelas e recursos geográficos.
+- public/data/ é público; não inserir segredos ou dados privados.
+- Fontes principais: dataset PRF/Kaggle, geometrias DNIT/Infra S.A., limites IBGE.
 
-- Filtros globais: ano e UF; atualizam indicadores, gráficos, tabela e ocorrências do mapa.
-- Filtro de BR: atua no mapa, destaca o trecho selecionado e filtra os acidentes daquela rodovia.
-- Mapa vetorial próprio do Brasil, com limites de estados e traçados de rodovias, sem tiles de mapa externo.
-- Modos de acidentes: pontos, calor e ocultar.
-- API inclui resumos, séries, severidade, horários, ranking, causas, estados, mapa e tabela detalhada. Confira `src/worker.py` para a implementação exata dos endpoints.
+## Funcionalidades
 
-## Arquivos que precisam permanecer sincronizados
+- Filtros globais ano e UF atualizam indicadores, gráficos, distribuições, tabela de registros e ocorrências no mapa.
+- O seletor de BR é independente e afeta apenas o traçado e os acidentes exibidos no mapa.
+- Mapa vetorial próprio com modos pontos, calor e ocultar.
+- Distribuições categóricas paginadas, registros completos paginados, preservando os 30 campos da fonte.
+- API adicional para consultas determinísticas e perguntas em português via Workers AI.
 
-- Interface fonte e publicada: `templates/index.html` ↔ `public/index.html`.
-- JavaScript fonte e publicado: `static/script.js` ↔ `public/static/script.js`.
-- CSS fonte e publicado: `static/style.css` ↔ `public/static/style.css`.
+## Analista IA já implementado
 
-Ao alterar um desses pares, aplicar a mesma mudança às duas cópias. O Wrangler publica `public/`, não as pastas de origem `templates/` e `static/`.
+- Endpoints em src/worker.py: POST /api/analista/consulta (consultas determinísticas), GET /api/analista/status, POST /api/analista/perguntar (Workers AI + ferramentas controladas).
+- Implementação de planejamento/síntese: src/analyst_ai.py. Consultas validadas: src/analyst_queries.py. Registros e análises detalhadas: src/record_queries.py. Esquema comum: src/data_schema.py.
+- Modelo configurado: @cf/zai-org/glm-4.7-flash, binding AI em wrangler.jsonc e variável ANALYST_AI_ENABLED.
+- O modelo planeja chamadas a ferramentas de domínio; o Worker valida argumentos e executa consultas contra JSONs preparados. Não executar SQL ou Python arbitrário gerado pelo modelo, nem dar acesso do modelo à base inteira.
+- Limites atuais descritos no README e no código: texto da pergunta, chamadas por plano, chamadas detalhadas, escopo de registros, comprimento da resposta e rate limit por IP.
+- Respostas devem distinguir registros observados de causalidade ou risco, trazer filtros/fontes e recusar perguntas não suportadas, como previsão futura ou risco sem denominador de exposição.
+- Workers Observability está configurado. AI Gateway, armazenamento próprio de conversas e orçamento global rígido de tokens/custo não estão implementados.
+- Avaliação do analista deve usar perguntas de referência com ferramenta/filtros/resultados esperados; medir extração de filtros, fidelidade numérica, citações, recusas, latência e consumo. Não alegar métricas de qualidade não medidas.
+- RAG/Vectorize pode servir documentos de metodologia, não substituir consultas estruturadas para totais.
 
-## Filtros e mapa: detalhes importantes
+## Arquivos sincronizados e dados
 
-- `static/script.js` gerencia o mapa, os filtros e o carregamento das geometrias.
-- O mapa usa uma sequência de requisição para ignorar respostas antigas quando filtros mudam rapidamente. Os filtros macro são agrupados por um debounce curto.
-- Os arquivos geográficos usam cache de promessas em andamento, para evitar downloads duplicados durante trocas rápidas. Respostas têm timeout e erros devem aparecer no status do mapa, sem deixar dados antigos parecerem atuais.
-- Ao mudar UF/BR, remover ou atualizar a camada rodoviária anterior. Reenquadrar o mapa para o Brasil ou a UF filtrada quando apropriado.
-- Valores padrão do pré-processamento limitam pontos para manter a interface responsiva: até 2.000 no mapa geral, 500 em mapas com filtros macro e até 2.500 quando uma BR é selecionada. O total do recorte e a amostra exibida não são a mesma coisa; não descrever os pontos desenhados como todos os acidentes quando há limite.
-- Se mexer no fluxo do mapa, comparar os arquivos `static/script.js` e `public/static/script.js` e validar que continuam idênticos.
+- templates/index.html ↔ public/index.html.
+- static/script.js ↔ public/static/script.js.
+- static/style.css ↔ public/static/style.css.
+- Manter cópias pareadas sincronizadas; Wrangler publica public/.
+- Não regerar/remover grandes recursos em public/data sem conferir impacto.
+- Os limites padrão de amostragem do mapa estão em tools/build_data.py e descritos no README. Totais de resumos e pontos visíveis são conceitos diferentes.
 
-## Ideia de IA discutida, ainda não implementada
+## Preferências
 
-Foi considerada uma evolução para um analista de dados por linguagem natural. Trate isso como proposta, não como funcionalidade existente nem como autorização para implementá-la automaticamente.
-
-Direção recomendada se o usuário pedir para construir:
-
-1. O modelo interpreta a pergunta e escolhe entre ferramentas de domínio previamente definidas, como consultar totais, comparar UFs, listar causas ou obter séries.
-2. O Worker valida ano, UF, métrica e limites, e executa os cálculos com a API/dados estruturados. Não aceitar SQL arbitrário produzido pelo modelo.
-3. O modelo redige uma explicação somente a partir dos resultados retornados, citando o recorte e a fonte e admitindo quando a pergunta não pode ser respondida.
-4. Criar perguntas de referência e avaliar seleção de ferramenta, extração dos filtros, fidelidade numérica, citações, recusas adequadas, latência e consumo.
-5. Workers AI pode fornecer inferência; AI Gateway pode apoiar observabilidade. D1 só é necessário se as consultas estruturadas pedirem acesso mais flexível do que os JSONs atuais. RAG/Vectorize é mais apropriado para documentos de metodologia e definições do que para obter totais numéricos.
-
-Não adicionar D1, Vectorize, AI Gateway ou outros serviços pagos/novos sem explicar a necessidade, os recursos que precisam ser habilitados e possíveis limites/custos ao usuário.
-
-## Preferências de trabalho
-
-- Fazer mudanças pequenas, coerentes com a arquitetura atual e com a identidade visual existente.
-- Não alterar, regenerar ou remover grandes arquivos de `public/data/` sem verificar o impacto e o pedido do usuário.
-- Não inventar métricas, previsões ou afirmações sobre gravidade/risco. Separar fatos da base, amostras e inferências.
-- O README deve explicar o projeto e apontar para o site; o usuário pediu que ele não traga instruções para execução local.
-- Antes de sincronizar mudanças com o GitHub, verificar a branch e o estado do repositório e relatar com precisão o que foi publicado.
-
+- Fazer mudanças pequenas e compatíveis com a identidade visual atual.
+- O README deve explicar o projeto, incluir link do site e não ensinar a rodar localmente.
+- Antes de publicar no GitHub, verificar a branch/estado e relatar com precisão o que foi enviado.
